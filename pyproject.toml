@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "match-intelligence"
+version = "0.1.0"
+description = "Deterministic football intelligence vertical slice"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+]
+foundry = [
+  "azure-ai-projects>=1.0.0b6",
+  "azure-identity>=1.19.0",
+  "azure-cognitiveservices-speech>=1.41.1",
+]
+
+[tool.setuptools]
+package-dir = {"" = "services/backend"}
+
+[tool.setuptools.packages.find]
+where = ["services/backend"]
+include = ["tactiq*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["services/backend"]

@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, Segoe UI, sans-serif;
+  background: #080b14;
+  color: #f3f6ff;
+}
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.card {
+  border: 1px solid #293145;
+  border-radius: 12px;
+  background: #10182a;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+button {
+  background: #2f6df6;
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+code {
+  background: #1d2333;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
