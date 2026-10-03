@@ -82,13 +82,17 @@ export default function HomePage() {
 
   const wsUrl = useMemo(() => API_BASE.replace("http", "ws"), []);
 
-  async function fetchDualCommentary(insightId?: string): Promise<{ primary_text: string; secondary_text: string } | null> {
-    if (!matchId) {
+  async function fetchDualCommentary(
+    insightId?: string,
+    targetMatchId?: string,
+  ): Promise<{ primary_text: string; secondary_text: string } | null> {
+    const effectiveMatchId = targetMatchId ?? matchId;
+    if (!effectiveMatchId) {
       return null;
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/v1/matches/${matchId}/commentary/dual`, {
+      const response = await fetch(`${API_BASE}/api/v1/matches/${effectiveMatchId}/commentary/dual`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language, insight_id: insightId ?? null }),
@@ -406,7 +410,7 @@ export default function HomePage() {
 
         if (liveCommentaryEnabled) {
           if (dualCommentaryEnabled) {
-            void fetchDualCommentary(next.insight_id).then((scripted) => {
+            void fetchDualCommentary(next.insight_id, id).then((scripted) => {
               if (scripted) {
                 enqueueSpeech(scripted.primary_text, scripted.secondary_text);
                 return;

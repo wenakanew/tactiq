@@ -294,36 +294,52 @@ def detect_player_influence(match_state: MatchState, events: list[Event], existi
 
 
 def detect_player_speed_burst(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> Insight | None:
-    if not events or any(i.type == "player_speed_burst" for i in existing_insights):
-        return None
-
-    team_id = "team_a"
-    snapshot = compute_snapshot(match_state.match_id, events, team_id)
-    top_speed = float(snapshot.metrics.get("top_player_speed_kmh", 0.0))
-    high_speed_actions = int(snapshot.metrics.get("player_high_speed_actions", 0))
-
-    if not (top_speed >= 24.0 and high_speed_actions >= 1):
+    if not events:
         return None
 
     windowed = _window_events(events, events[-1].match_clock_ms)
-    supporting = [e.event_id for e in windowed if e.team_id == team_id]
-    evidence = [
-        EvidenceItem(metric="top_player_speed_kmh", value=round(top_speed, 1), unit="km/h", supporting_event_ids=supporting),
-        EvidenceItem(metric="player_high_speed_actions", value=high_speed_actions, unit="count", supporting_event_ids=supporting),
-    ]
+    candidate_insights: list[tuple[Insight, float, int]] = []
 
-    return Insight(
-        match_id=match_state.match_id,
-        type="player_speed_burst",
-        priority="medium",
-        confidence=0.82,
-        team_id=team_id,
-        window_start_ms=max(0, events[-1].match_clock_ms - WINDOW_MS),
-        window_end_ms=events[-1].match_clock_ms,
-        title="Speed Burst Detected",
-        summary="A rapid acceleration phase has emerged, increasing attacking threat and transition risk.",
-        evidence=evidence,
-    )
+    for team_id in {event.team_id for event in events}:
+        if any(i.type == "player_speed_burst" and i.team_id == team_id for i in existing_insights):
+            continue
+
+        snapshot = compute_snapshot(match_state.match_id, events, team_id)
+        top_speed = float(snapshot.metrics.get("top_player_speed_kmh", 0.0))
+        high_speed_actions = int(snapshot.metrics.get("player_high_speed_actions", 0))
+        if not (top_speed >= 24.0 and high_speed_actions >= 1):
+            continue
+
+        supporting = [e.event_id for e in windowed if e.team_id == team_id]
+        evidence = [
+            EvidenceItem(metric="top_player_speed_kmh", value=round(top_speed, 1), unit="km/h", supporting_event_ids=supporting),
+            EvidenceItem(metric="player_high_speed_actions", value=high_speed_actions, unit="count", supporting_event_ids=supporting),
+        ]
+
+        candidate_insights.append(
+            (
+                Insight(
+                    match_id=match_state.match_id,
+                    type="player_speed_burst",
+                    priority="medium",
+                    confidence=0.82,
+                    team_id=team_id,
+                    window_start_ms=max(0, events[-1].match_clock_ms - WINDOW_MS),
+                    window_end_ms=events[-1].match_clock_ms,
+                    title="Speed Burst Detected",
+                    summary="A rapid acceleration phase has emerged, increasing attacking threat and transition risk.",
+                    evidence=evidence,
+                ),
+                top_speed,
+                high_speed_actions,
+            )
+        )
+
+    if not candidate_insights:
+        return None
+
+    candidate_insights.sort(key=lambda item: (item[1], item[2]), reverse=True)
+    return candidate_insights[0][0]
 
 
 def detect_insights(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> list[Insight]:

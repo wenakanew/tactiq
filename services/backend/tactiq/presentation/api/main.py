@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from tactiq.application.service import service
 from tactiq.simulator.scenarios import list_scenarios
+
+
+MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("VIDEO_UPLOAD_MAX_BYTES", str(200 * 1024 * 1024)))
 
 app = FastAPI(title="Match Intelligence API", version="0.1.0")
 
@@ -68,6 +74,22 @@ class ViewerProfileRequest(BaseModel):
 
 class VideoLinkRequest(BaseModel):
     url: str
+
+
+async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
+    collected = bytearray()
+    chunk_size = 1024 * 1024
+
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+
+        collected.extend(chunk)
+        if len(collected) > max_bytes:
+            raise HTTPException(status_code=413, detail=f"Uploaded video exceeds {max_bytes} bytes")
+
+    return bytes(collected)
 
 
 @app.get("/health/live")
@@ -150,13 +172,14 @@ async def upload_video_for_analysis(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Video filename is required")
 
-    content = await file.read()
+    content = await _read_upload_bounded(file, MAX_VIDEO_UPLOAD_BYTES)
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded video is empty")
 
     effective_source = source_name or file.filename
     try:
-        return service.create_match_from_video(
+        return await run_in_threadpool(
+            service.create_match_from_video,
             video_bytes=content,
             source_name=effective_source,
             use_auto_eventing=True,

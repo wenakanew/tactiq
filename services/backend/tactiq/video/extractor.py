@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import os
 import tempfile
@@ -100,10 +100,10 @@ def extract_events_from_video_auto(content: bytes, match_id: str) -> VideoExtrac
         if len(events) < 6:
             # Guardrail: keep pipeline useful even for low-quality or static clips.
             fallback = extract_events_from_video_stub(content=content, match_id=match_id)
-            fallback.notes = (
-                "Auto-eventing produced too few events; fell back to deterministic stub extraction."
+            return replace(
+                fallback,
+                notes="Auto-eventing produced too few events; fell back to deterministic stub extraction.",
             )
-            return fallback
 
         confidence = min(0.86, 0.45 + (len(events) / 40.0))
         return VideoExtractionResult(
