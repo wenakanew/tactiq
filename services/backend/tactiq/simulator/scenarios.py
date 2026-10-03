@@ -21,13 +21,13 @@ def sustained_pressure_events(match_id: str) -> list[Event]:
     # Deliberately scripted to satisfy detector thresholds in a 90s window.
     raw = [
         (61_000, "recovery", "team_a", "a_06", 42.0, 43.0, 43.0, 44.0, {}),
-        (62_000, "pass_completed", "team_a", "a_08", 45.0, 45.0, 58.0, 41.0, {"progressive": True}),
-        (63_000, "pass_completed", "team_a", "a_10", 58.0, 41.0, 68.0, 39.0, {"progressive": True}),
-        (64_000, "pass_completed", "team_a", "a_11", 63.0, 39.0, 72.0, 35.0, {"progressive": True}),
-        (65_000, "pass_completed", "team_a", "a_08", 62.0, 35.0, 75.0, 32.0, {"progressive": True}),
-        (66_000, "carry", "team_a", "a_10", 64.0, 32.0, 81.0, 30.0, {"progressive": True}),
-        (67_000, "pass_completed", "team_a", "a_07", 81.0, 30.0, 78.0, 34.0, {"progressive": False}),
-        (68_000, "shot", "team_a", "a_09", 78.0, 34.0, 90.0, 30.0, {}),
+        (62_000, "pass_completed", "team_a", "a_08", 45.0, 45.0, 58.0, 41.0, {"progressive": True, "travel_ms": 650, "pressured": True}),
+        (63_000, "pass_completed", "team_a", "a_10", 58.0, 41.0, 68.0, 39.0, {"progressive": True, "travel_ms": 600}),
+        (64_000, "pass_completed", "team_a", "a_11", 63.0, 39.0, 72.0, 35.0, {"progressive": True, "travel_ms": 640, "pressured": True}),
+        (65_000, "pass_completed", "team_a", "a_08", 62.0, 35.0, 75.0, 32.0, {"progressive": True, "travel_ms": 620}),
+        (66_000, "carry", "team_a", "a_10", 64.0, 32.0, 81.0, 30.0, {"progressive": True, "travel_ms": 700}),
+        (67_000, "pass_incomplete", "team_a", "a_07", 81.0, 30.0, 78.0, 34.0, {"progressive": False, "travel_ms": 500, "pressured": True}),
+        (68_000, "shot", "team_a", "a_09", 78.0, 34.0, 90.0, 30.0, {"shot_speed_kmh": 102.5}),
     ]
 
     events: list[Event] = []
@@ -54,16 +54,16 @@ def sustained_pressure_events(match_id: str) -> list[Event]:
 def rhythm_shift_events(match_id: str) -> list[Event]:
     # Early low tempo, then Team B surges in event intensity and progression.
     raw = [
-        (20_000, "pass_completed", "team_a", "a_04", 41.0, 42.0, 48.0, 43.0, {"progressive": False}),
-        (30_000, "pass_completed", "team_a", "a_06", 48.0, 43.0, 54.0, 39.0, {"progressive": False}),
+        (20_000, "pass_completed", "team_a", "a_04", 41.0, 42.0, 48.0, 43.0, {"progressive": False, "travel_ms": 700}),
+        (30_000, "pass_completed", "team_a", "a_06", 48.0, 43.0, 54.0, 39.0, {"progressive": False, "travel_ms": 730}),
         (40_000, "turnover", "team_a", "a_08", 54.0, 39.0, 52.0, 37.0, {}),
         (45_000, "recovery", "team_b", "b_06", 52.0, 37.0, 53.0, 36.0, {}),
-        (52_000, "pass_completed", "team_b", "b_08", 53.0, 36.0, 63.0, 34.0, {"progressive": True}),
-        (56_000, "carry", "team_b", "b_11", 63.0, 34.0, 71.0, 30.0, {"progressive": True}),
-        (60_000, "pass_completed", "team_b", "b_10", 71.0, 30.0, 76.0, 31.0, {"progressive": True}),
-        (64_000, "pass_completed", "team_b", "b_07", 76.0, 31.0, 81.0, 29.0, {"progressive": True}),
-        (68_000, "shot", "team_b", "b_09", 81.0, 29.0, 90.0, 31.0, {}),
-        (72_000, "pass_completed", "team_b", "b_08", 66.0, 31.0, 78.0, 33.0, {"progressive": True}),
+        (52_000, "pass_completed", "team_b", "b_08", 53.0, 36.0, 63.0, 34.0, {"progressive": True, "travel_ms": 620}),
+        (56_000, "carry", "team_b", "b_11", 63.0, 34.0, 71.0, 30.0, {"progressive": True, "travel_ms": 700}),
+        (60_000, "pass_completed", "team_b", "b_10", 71.0, 30.0, 76.0, 31.0, {"progressive": True, "travel_ms": 560}),
+        (64_000, "pass_completed", "team_b", "b_07", 76.0, 31.0, 81.0, 29.0, {"progressive": True, "travel_ms": 540}),
+        (68_000, "shot", "team_b", "b_09", 81.0, 29.0, 90.0, 31.0, {"shot_speed_kmh": 98.1}),
+        (72_000, "pass_completed", "team_b", "b_08", 66.0, 31.0, 78.0, 33.0, {"progressive": True, "travel_ms": 600}),
     ]
 
     events: list[Event] = []
@@ -91,12 +91,12 @@ def player_influence_events(match_id: str) -> list[Event]:
     # Player a_10 drives most progressive actions and contributes to the shot sequence.
     raw = [
         (58_000, "recovery", "team_a", "a_06", 43.0, 45.0, 44.0, 45.0, {}),
-        (60_000, "pass_completed", "team_a", "a_10", 44.0, 45.0, 58.0, 42.0, {"progressive": True}),
-        (62_000, "carry", "team_a", "a_10", 58.0, 42.0, 68.0, 39.0, {"progressive": True}),
-        (64_000, "pass_completed", "team_a", "a_10", 68.0, 39.0, 74.0, 34.0, {"progressive": True}),
-        (66_000, "pass_completed", "team_a", "a_08", 74.0, 34.0, 77.0, 31.0, {"progressive": True}),
-        (68_000, "pass_completed", "team_a", "a_10", 77.0, 31.0, 82.0, 29.0, {"progressive": True}),
-        (70_000, "shot", "team_a", "a_09", 82.0, 29.0, 91.0, 30.0, {"created_by": "a_10"}),
+        (60_000, "pass_completed", "team_a", "a_10", 44.0, 45.0, 58.0, 42.0, {"progressive": True, "travel_ms": 620, "pressured": True}),
+        (62_000, "carry", "team_a", "a_10", 58.0, 42.0, 68.0, 39.0, {"progressive": True, "travel_ms": 650}),
+        (64_000, "pass_completed", "team_a", "a_10", 68.0, 39.0, 74.0, 34.0, {"progressive": True, "travel_ms": 520}),
+        (66_000, "pass_completed", "team_a", "a_08", 74.0, 34.0, 77.0, 31.0, {"progressive": True, "travel_ms": 500}),
+        (68_000, "pass_completed", "team_a", "a_10", 77.0, 31.0, 82.0, 29.0, {"progressive": True, "travel_ms": 480, "ball_speed_kmh": 41.3}),
+        (70_000, "shot", "team_a", "a_09", 82.0, 29.0, 91.0, 30.0, {"created_by": "a_10", "shot_speed_kmh": 108.2}),
     ]
 
     events: list[Event] = []

@@ -20,6 +20,8 @@ class AzureSpeechSynthesizer:
     def __init__(self) -> None:
         self._endpoint = os.getenv("AZURE_SPEECH_ENDPOINT")
         self._key = os.getenv("AZURE_SPEECH_API_KEY")
+        self._commentator_a_voice = os.getenv("AZURE_SPEECH_COMMENTATOR_A_VOICE")
+        self._commentator_b_voice = os.getenv("AZURE_SPEECH_COMMENTATOR_B_VOICE")
 
     def is_configured(self) -> bool:
         return bool(self._endpoint and self._key)
@@ -135,13 +137,13 @@ class AzureSpeechSynthesizer:
         return mapping.get(language, "en-GB-RyanNeural")
 
     @staticmethod
-    def _commentator_pair_for(language: str) -> tuple[str, str]:
+    def _default_commentator_pair_for(language: str) -> tuple[str, str]:
         mapping = {
-            "en-GB": ("en-GB-RyanNeural", "en-GB-SoniaNeural"),
-            "sw-KE": ("sw-KE-RafikiNeural", "sw-KE-ZuriNeural"),
-            "fr-FR": ("fr-FR-HenriNeural", "fr-FR-DeniseNeural"),
+            "en-GB": ("en-GB-RyanNeural", "en-GB-ThomasNeural"),
+            "sw-KE": ("sw-KE-RafikiNeural", "en-GB-ThomasNeural"),
+            "fr-FR": ("fr-FR-HenriNeural", "en-GB-ThomasNeural"),
         }
-        return mapping.get(language, ("en-GB-RyanNeural", "en-GB-SoniaNeural"))
+        return mapping.get(language, ("en-GB-RyanNeural", "en-GB-ThomasNeural"))
 
     @staticmethod
     def _single_commentary_ssml(text: str, language: str, voice: str, rate: str, pitch: str) -> str:
@@ -168,11 +170,15 @@ class AzureSpeechSynthesizer:
         secondary = escape(AzureSpeechSynthesizer._humanize_text(secondary_text))
         return (
             f"<speak version='1.0' xml:lang='{language}' xmlns='http://www.w3.org/2001/10/synthesis'>"
-            f"<voice name='{primary_voice}'><prosody rate='+6%' pitch='+2st' volume='+1dB'>{primary}</prosody></voice>"
-            "<break time='320ms'/>"
-            f"<voice name='{secondary_voice}'><prosody rate='-2%' pitch='-1st' volume='-1dB'>{secondary}</prosody></voice>"
+            f"<voice name='{primary_voice}'><prosody rate='+9%' pitch='+1st' volume='+2dB'>{primary}</prosody></voice>"
+            "<break time='220ms'/>"
+            f"<voice name='{secondary_voice}'><prosody rate='-1%' pitch='-2st' volume='+0dB'>{secondary}</prosody></voice>"
             "</speak>"
         )
+
+    def _commentator_pair_for(self, language: str) -> tuple[str, str]:
+        base_a, base_b = self._default_commentator_pair_for(language)
+        return self._commentator_a_voice or base_a, self._commentator_b_voice or base_b
 
     @staticmethod
     def _humanize_text(text: str) -> str:

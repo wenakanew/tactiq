@@ -78,3 +78,33 @@ def test_foundry_generator_falls_back_on_foundry_error() -> None:
 
     assert result.fallback_used is True
     assert result.provider == "deterministic"
+
+
+def test_deterministic_dual_commentary_has_two_distinct_lines() -> None:
+    generator = DeterministicNarrativeGenerator()
+    result = generator.generate_dual_commentary(_sample_insight(), language="en-GB")
+
+    assert result.primary_text
+    assert result.secondary_text
+    assert result.primary_text != result.secondary_text
+    assert result.provider == "deterministic"
+
+
+def test_foundry_dual_commentary_falls_back_on_error() -> None:
+    fallback = DeterministicNarrativeGenerator()
+
+    with patch.dict(
+        "os.environ",
+        {
+            "FOUNDRY_ENABLED": "true",
+            "AZURE_FOUNDRY_PROJECT_ENDPOINT": "https://example.invalid",
+            "AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME": "demo",
+        },
+        clear=False,
+    ):
+        generator = FoundryNarrativeGenerator(fallback)
+        with patch.object(generator, "_call_foundry", side_effect=RuntimeError("boom")):
+            result = generator.generate_dual_commentary(_sample_insight(), language="en-GB")
+
+    assert result.fallback_used is True
+    assert result.provider == "deterministic"

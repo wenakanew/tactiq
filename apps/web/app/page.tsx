@@ -16,18 +16,29 @@ type Insight = {
   evidence: Array<{ metric: string; value: number | string }>;
 };
 
+type VideoIngestionResponse = {
+  match_id: string;
+  source: string;
+  extractor: string;
+  extractor_confidence: number;
+  notes: string;
+  event_count: number;
+  insight_count: number;
+  insights: Insight[];
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 function voicePairFor(language: string): { primary: string; secondary: string } {
   switch (language) {
     case "en-GB":
-      return { primary: "en-GB-RyanNeural", secondary: "en-GB-SoniaNeural" };
+      return { primary: "en-GB-RyanNeural", secondary: "en-GB-ThomasNeural" };
     case "sw-KE":
-      return { primary: "sw-KE-RafikiNeural", secondary: "en-GB-SoniaNeural" };
+      return { primary: "sw-KE-RafikiNeural", secondary: "en-GB-ThomasNeural" };
     case "fr-FR":
-      return { primary: "fr-FR-HenriNeural", secondary: "fr-FR-DeniseNeural" };
+      return { primary: "fr-FR-HenriNeural", secondary: "en-GB-ThomasNeural" };
     default:
-      return { primary: "en-GB-RyanNeural", secondary: "en-GB-SoniaNeural" };
+      return { primary: "en-GB-RyanNeural", secondary: "en-GB-ThomasNeural" };
   }
 }
 
@@ -59,6 +70,10 @@ export default function HomePage() {
   const [recap, setRecap] = useState<string>("");
   const [recapMeta, setRecapMeta] = useState<string>("");
   const [speechStatus, setSpeechStatus] = useState<string>("idle");
+  const [videoStatus, setVideoStatus] = useState<string>("idle");
+  const [videoUrl, setVideoUrl] = useState<string>("");
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [videoSummary, setVideoSummary] = useState<VideoIngestionResponse | null>(null);
   const [liveCommentaryEnabled, setLiveCommentaryEnabled] = useState<boolean>(true);
   const [dualCommentaryEnabled, setDualCommentaryEnabled] = useState<boolean>(true);
   const wsRef = useRef<WebSocket | null>(null);
@@ -66,6 +81,34 @@ export default function HomePage() {
   const speakingRef = useRef<boolean>(false);
 
   const wsUrl = useMemo(() => API_BASE.replace("http", "ws"), []);
+
+  async function fetchDualCommentary(
+    insightId?: string,
+    targetMatchId?: string,
+  ): Promise<{ primary_text: string; secondary_text: string } | null> {
+    const effectiveMatchId = targetMatchId ?? matchId;
+    if (!effectiveMatchId) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/matches/${effectiveMatchId}/commentary/dual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, insight_id: insightId ?? null }),
+      });
+      if (!response.ok) {
+        return null;
+      }
+      const payload = (await response.json()) as { primary_text: string; secondary_text: string };
+      if (!payload.primary_text || !payload.secondary_text) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
 
   async function startDemo() {
     setStatus("creating match...");
@@ -76,6 +119,7 @@ export default function HomePage() {
     setNarrativeMeta("");
     setRecap("");
     setRecapMeta("");
+    setVideoSummary(null);
 
     if (scenarios.length === 0) {
       const available = (await fetch(`${API_BASE}/api/v1/scenarios`).then((res) => res.json())) as Scenario[];
@@ -96,6 +140,68 @@ export default function HomePage() {
     });
 
     connectWs(created.match_id);
+  }
+
+  function applyVideoSummary(payload: VideoIngestionResponse) {
+    setVideoSummary(payload);
+    setMatchId(payload.match_id);
+    setStatus("completed");
+    setEventsCount(payload.event_count);
+    setInsights(payload.insights ?? []);
+    setLatestInsight(payload.insights?.length ? payload.insights[payload.insights.length - 1] : null);
+    setNarrative("");
+    setNarrativeMeta("");
+    setRecap("");
+    setRecapMeta("");
+  }
+
+  async function uploadVideo() {
+    if (!selectedVideoFile) {
+      setVideoStatus("select a video file first");
+      return;
+    }
+
+    setVideoStatus("uploading and extracting events...");
+    const form = new FormData();
+    form.append("file", selectedVideoFile);
+    form.append("source_name", selectedVideoFile.name);
+
+    const response = await fetch(`${API_BASE}/api/v1/video/upload`, {
+      method: "POST",
+      body: form,
+    });
+
+    if (!response.ok) {
+      setVideoStatus("video upload failed");
+      return;
+    }
+
+    const payload = (await response.json()) as VideoIngestionResponse;
+    applyVideoSummary(payload);
+    setVideoStatus(`done • ${payload.extractor} • ${payload.event_count} events`);
+  }
+
+  async function ingestVideoFromLink() {
+    if (!videoUrl.trim()) {
+      setVideoStatus("enter a video URL first");
+      return;
+    }
+
+    setVideoStatus("processing video link...");
+    const response = await fetch(`${API_BASE}/api/v1/video/from-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: videoUrl.trim() }),
+    });
+
+    if (!response.ok) {
+      setVideoStatus("video link ingestion failed");
+      return;
+    }
+
+    const payload = (await response.json()) as VideoIngestionResponse;
+    applyVideoSummary(payload);
+    setVideoStatus(`done • ${payload.extractor} • ${payload.event_count} events`);
   }
 
   async function generateNarrative() {
@@ -267,6 +373,13 @@ export default function HomePage() {
   }
 
   async function speakCurrentText() {
+    const scripted = dualCommentaryEnabled ? await fetchDualCommentary() : null;
+
+    if (scripted) {
+      enqueueSpeech(scripted.primary_text, scripted.secondary_text);
+      return;
+    }
+
     const primary = recap || narrative;
     const secondary = dualCommentaryEnabled
       ? "Absolutely. You can feel the tempo shift, and that pressure is forcing mistakes."
@@ -296,12 +409,21 @@ export default function HomePage() {
         setInsights((existing) => [...existing, next]);
 
         if (liveCommentaryEnabled) {
-          enqueueSpeech(
-            `${next.title}. ${next.summary}`,
-            dualCommentaryEnabled
-              ? `That looks dangerous. The confidence is ${Math.round(next.confidence * 100)} percent, and momentum is building.`
-              : undefined,
-          );
+          if (dualCommentaryEnabled) {
+            void fetchDualCommentary(next.insight_id, id).then((scripted) => {
+              if (scripted) {
+                enqueueSpeech(scripted.primary_text, scripted.secondary_text);
+                return;
+              }
+
+              enqueueSpeech(
+                `${next.title}. ${next.summary}`,
+                `That looks dangerous. The confidence is ${Math.round(next.confidence * 100)} percent, and momentum is building.`,
+              );
+            });
+          } else {
+            enqueueSpeech(`${next.title}. ${next.summary}`);
+          }
         }
       }
 
@@ -334,6 +456,34 @@ export default function HomePage() {
         {matchId ? <p>Match: <code>{matchId}</code></p> : null}
         <p>Events streamed: {eventsCount}</p>
         {scenarios.length > 0 ? <p>Scenarios loaded: {scenarios.length}</p> : null}
+      </div>
+
+      <div className="card">
+        <h2>Video upload</h2>
+        <p>Upload a clip to run auto-eventing and push extracted events through the intelligence pipeline.</p>
+        <input
+          type="file"
+          accept="video/*"
+          onChange={(event) => setSelectedVideoFile(event.target.files?.[0] ?? null)}
+        />{" "}
+        <button onClick={uploadVideo}>Upload video</button>
+        <div style={{ marginTop: 8 }}>
+          <input
+            type="url"
+            placeholder="https://example.com/video.mp4"
+            value={videoUrl}
+            onChange={(event) => setVideoUrl(event.target.value)}
+            style={{ width: "70%" }}
+          />{" "}
+          <button onClick={ingestVideoFromLink}>Ingest from link</button>
+        </div>
+        <p>Video status: {videoStatus}</p>
+        {videoSummary ? (
+          <p>
+            extractor=<code>{videoSummary.extractor}</code> • confidence={Math.round(videoSummary.extractor_confidence * 100)}% •
+            events={videoSummary.event_count} • insights={videoSummary.insight_count}
+          </p>
+        ) : null}
       </div>
 
       <div className="card">
