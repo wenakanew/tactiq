@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,21 @@ class DualSpeechRequest(BaseModel):
     secondary_voice: str | None = None
 
 
+class DualCommentaryRequest(BaseModel):
+    language: str = Field(default="en-GB")
+    insight_id: str | None = None
+
+
+class ViewerProfileRequest(BaseModel):
+    favorite_team_id: str | None = None
+    favorite_player_id: str | None = None
+    focus_metric: str | None = None
+
+
+class VideoLinkRequest(BaseModel):
+    url: str
+
+
 @app.get("/health/live")
 def live() -> dict[str, str]:
     return {"status": "ok"}
@@ -106,6 +121,63 @@ def get_insights(match_id: str) -> list[dict]:
     if match_id not in service.matches:
         raise HTTPException(status_code=404, detail="Match not found")
     return [i.model_dump() for i in service.get_insights(match_id)]
+
+
+@app.post("/api/v1/matches/{match_id}/viewer-profile")
+def set_viewer_profile(match_id: str, payload: ViewerProfileRequest) -> dict:
+    if match_id not in service.matches:
+        raise HTTPException(status_code=404, detail="Match not found")
+    return service.set_viewer_profile(
+        match_id=match_id,
+        favorite_team_id=payload.favorite_team_id,
+        favorite_player_id=payload.favorite_player_id,
+        focus_metric=payload.focus_metric,
+    )
+
+
+@app.get("/api/v1/matches/{match_id}/overlay")
+def get_overlay(match_id: str) -> dict:
+    if match_id not in service.matches:
+        raise HTTPException(status_code=404, detail="Match not found")
+    return service.get_overlay_payload(match_id)
+
+
+@app.post("/api/v1/video/upload")
+async def upload_video_for_analysis(
+    file: UploadFile = File(...),
+    source_name: str | None = Form(default=None),
+) -> dict:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Video filename is required")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded video is empty")
+
+    effective_source = source_name or file.filename
+    try:
+        return service.create_match_from_video(
+            video_bytes=content,
+            source_name=effective_source,
+            use_auto_eventing=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/v1/video/from-link")
+def create_from_video_link(payload: VideoLinkRequest) -> dict:
+    if not payload.url.strip():
+        raise HTTPException(status_code=400, detail="Video URL is required")
+
+    # Stub path: avoid external fetching in hackathon baseline.
+    # Deterministically seed extraction from URL bytes so pipeline can be tested end-to-end.
+    source = payload.url.strip()
+    return service.create_match_from_video(
+        video_bytes=source.encode("utf-8"),
+        source_name=source,
+        use_auto_eventing=False,
+    )
 
 
 @app.post("/api/v1/matches/{match_id}/narratives")
@@ -206,6 +278,29 @@ def synthesize_dual_speech(payload: DualSpeechRequest) -> dict:
         "provider": result.provider,
         "content_type": result.content_type,
         "audio_base64": result.audio_base64,
+    }
+
+
+@app.post("/api/v1/matches/{match_id}/commentary/dual")
+def generate_dual_commentary(match_id: str, payload: DualCommentaryRequest) -> dict:
+    if match_id not in service.matches:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    try:
+        result = service.generate_dual_commentary(
+            match_id=match_id,
+            language=payload.language,
+            insight_id=payload.insight_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "primary_text": result.primary_text,
+        "secondary_text": result.secondary_text,
+        "language": result.language,
+        "fallback_used": result.fallback_used,
+        "provider": result.provider,
     }
 
 

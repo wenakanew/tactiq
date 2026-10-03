@@ -5,11 +5,17 @@ from collections import defaultdict
 from statistics import mean
 from uuid import uuid4
 
-from tactiq.agents.narrative import DeterministicNarrativeGenerator, FoundryNarrativeGenerator, NarrativeResult
+from tactiq.agents.narrative import (
+    DeterministicNarrativeGenerator,
+    DualCommentaryResult,
+    FoundryNarrativeGenerator,
+    NarrativeResult,
+)
 from tactiq.agents.speech import AzureSpeechSynthesizer, SpeechResult
 from tactiq.domain.models import Event, Insight, MatchState, MatchStatus
 from tactiq.intelligence.engine import detect_insights, reduce_match_state
 from tactiq.simulator.scenarios import load_scenario
+from tactiq.video.extractor import extract_events_from_video_auto, extract_events_from_video_stub
 
 
 class MatchService:
@@ -19,6 +25,7 @@ class MatchService:
         self.insights: dict[str, list[Insight]] = defaultdict(list)
         self.subscribers: dict[str, set[asyncio.Queue[dict]]] = defaultdict(set)
         self.tasks: dict[str, asyncio.Task] = {}
+        self.viewer_profiles: dict[str, dict[str, str]] = defaultdict(dict)
         self.narrative_generator = FoundryNarrativeGenerator(DeterministicNarrativeGenerator())
         self.speech_synthesizer = AzureSpeechSynthesizer()
 
@@ -27,6 +34,49 @@ class MatchService:
         state = MatchState(match_id=match_id, scenario_id=scenario_id, seed=seed)
         self.matches[match_id] = state
         return state
+
+    def create_match_from_video(self, video_bytes: bytes, source_name: str, use_auto_eventing: bool = True) -> dict:
+        match = self.create_match(scenario_id="video_upload", seed=0)
+        if use_auto_eventing:
+            try:
+                extracted = extract_events_from_video_auto(content=video_bytes, match_id=match.match_id)
+            except Exception:  # noqa: BLE001
+                extracted = extract_events_from_video_stub(content=video_bytes, match_id=match.match_id)
+        else:
+            extracted = extract_events_from_video_stub(content=video_bytes, match_id=match.match_id)
+
+        self.events[match.match_id] = []
+        self.insights[match.match_id] = []
+        self.matches[match.match_id].status = MatchStatus.RUNNING
+
+        for event in extracted.events:
+            self.events[match.match_id].append(event)
+            reduce_match_state(self.matches[match.match_id], event, self.events[match.match_id])
+            new_insights = detect_insights(
+                self.matches[match.match_id],
+                self.events[match.match_id],
+                self.insights[match.match_id],
+            )
+            if new_insights:
+                self.insights[match.match_id].extend(new_insights)
+
+        self.matches[match.match_id].status = MatchStatus.COMPLETED
+
+        notes = extracted.notes
+        if use_auto_eventing and extracted.extractor == "video-stub-v1":
+            notes = "Auto-eventing unavailable for this clip/runtime; deterministic stub extraction was used."
+
+        return {
+            "match_id": match.match_id,
+            "source": source_name,
+            "extractor": extracted.extractor,
+            "extractor_confidence": extracted.confidence,
+            "notes": notes,
+            "event_count": len(self.events[match.match_id]),
+            "insight_count": len(self.insights[match.match_id]),
+            "state": self.matches[match.match_id].model_dump(),
+            "insights": [item.model_dump() for item in self.insights[match.match_id]],
+        }
 
     def get_match(self, match_id: str) -> MatchState:
         return self.matches[match_id]
@@ -49,6 +99,9 @@ class MatchService:
         if not insights:
             raise ValueError("No insights available for narrative generation")
 
+        if audience_mode == "player" and not selected_player_id:
+            selected_player_id = self.viewer_profiles.get(match_id, {}).get("favorite_player_id")
+
         if insight_id:
             target = next((item for item in insights if item.insight_id == insight_id), None)
             if target is None:
@@ -62,6 +115,87 @@ class MatchService:
             language=language,
             selected_player_id=selected_player_id,
         )
+
+    def generate_dual_commentary(
+        self,
+        match_id: str,
+        language: str,
+        insight_id: str | None = None,
+    ) -> DualCommentaryResult:
+        insights = self.insights[match_id]
+        if not insights:
+            raise ValueError("No insights available for commentary generation")
+
+        if insight_id:
+            target = next((item for item in insights if item.insight_id == insight_id), None)
+            if target is None:
+                raise ValueError("Insight not found")
+        else:
+            target = insights[-1]
+
+        return self.narrative_generator.generate_dual_commentary(
+            insight=target,
+            language=language,
+        )
+
+    def set_viewer_profile(
+        self,
+        match_id: str,
+        favorite_team_id: str | None = None,
+        favorite_player_id: str | None = None,
+        focus_metric: str | None = None,
+    ) -> dict[str, str]:
+        profile = self.viewer_profiles[match_id]
+        if favorite_team_id:
+            profile["favorite_team_id"] = favorite_team_id
+        if favorite_player_id:
+            profile["favorite_player_id"] = favorite_player_id
+        if focus_metric:
+            profile["focus_metric"] = focus_metric
+        return profile
+
+    def get_overlay_payload(self, match_id: str) -> dict:
+        state = self.matches[match_id]
+        latest_insight = self.insights[match_id][-1] if self.insights[match_id] else None
+
+        return {
+            "overlay_version": "1.0.0",
+            "match_id": match_id,
+            "clock_ms": state.match_clock_ms,
+            "status": state.status.value,
+            "score": state.score,
+            "possession_team_id": state.possession_team_id,
+            "metrics_by_team": state.metrics_by_team,
+            "current_insight": (
+                {
+                    "insight_id": latest_insight.insight_id,
+                    "type": latest_insight.type,
+                    "priority": latest_insight.priority,
+                    "confidence": latest_insight.confidence,
+                    "team_id": latest_insight.team_id,
+                    "title": latest_insight.title,
+                    "summary": latest_insight.summary,
+                    "window_start_ms": latest_insight.window_start_ms,
+                    "window_end_ms": latest_insight.window_end_ms,
+                    "evidence": [
+                        {
+                            "metric": item.metric,
+                            "value": item.value,
+                            "unit": item.unit,
+                        }
+                        for item in latest_insight.evidence
+                    ],
+                }
+                if latest_insight
+                else None
+            ),
+            "viewer_profile": self.viewer_profiles.get(match_id, {}),
+            "render_hints": {
+                "placement": "lower-third",
+                "priority": latest_insight.priority if latest_insight else "low",
+                "machine_readable": True,
+            },
+        }
 
     def generate_recap(
         self,

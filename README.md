@@ -38,6 +38,20 @@ Then call:
 
 - `POST /api/v1/speech/synthesize`
 - `POST /api/v1/speech/synthesize-dual` (two-commentator mode)
+- `POST /api/v1/matches/{match_id}/commentary/dual` (role-specialized dual script)
+
+Optional voice overrides (two male commentator defaults):
+
+- `AZURE_SPEECH_COMMENTATOR_A_VOICE` (default `en-GB-RyanNeural`)
+- `AZURE_SPEECH_COMMENTATOR_B_VOICE` (default `en-GB-ThomasNeural`)
+
+Optional Foundry commentary profile tuning:
+
+- `FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME` (default `commentary-playbyplay`)
+- `FOUNDRY_COMMENTARY_COLOR_AGENT_NAME` (default `commentary-color`)
+- `FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION` (default `v1`)
+- `FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE` (role guidance string)
+- `FOUNDRY_COMMENTARY_COLOR_PROFILE` (role guidance string)
 
 with:
 
@@ -103,3 +117,19 @@ This currently includes deterministic insights, three core detectors, and a narr
   - Uses accumulated insights and returns ranked top insights metadata.
 - Localized speech path in UI:
   - The web app can speak the current narrative/recap using browser speech synthesis (`en-GB`, `sw-KE`, `fr-FR`).
+- Broadcast overlay endpoint:
+  - `GET /api/v1/matches/{match_id}/overlay`
+  - Returns machine-readable timed payloads suitable for on-screen overlays.
+- Viewer personalization profile endpoint:
+  - `POST /api/v1/matches/{match_id}/viewer-profile`
+  - Supports `favorite_team_id`, `favorite_player_id`, and `focus_metric`.
+- Expanded real-time football metrics:
+  - pass attempts/completions/accuracy, pass average distance, pass difficulty rating,
+  - ball speed and shot speed,
+  - player movement and high-speed action indicators.
+- Video ingestion (auto-eventing + schema adapter):
+   - `POST /api/v1/video/upload` (multipart video file)
+      - Runs a lightweight motion-model auto-eventing pipeline (`video-auto-v1`) over frames.
+      - Automatically falls back to deterministic stub extraction if runtime/video quality is insufficient.
+   - `POST /api/v1/video/from-link` (URL string; deterministic stub extraction)
+   - Both paths normalize events into the same `Event` schema and run the current intelligence pipeline.

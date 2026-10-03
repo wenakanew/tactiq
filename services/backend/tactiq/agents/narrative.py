@@ -21,6 +21,15 @@ class NarrativeResult:
     provider: str = "deterministic"
 
 
+@dataclass
+class DualCommentaryResult:
+    primary_text: str
+    secondary_text: str
+    language: str
+    fallback_used: bool
+    provider: str = "deterministic"
+
+
 class NarrativeGenerator(Protocol):
     def generate(
         self,
@@ -29,6 +38,12 @@ class NarrativeGenerator(Protocol):
         language: str,
         selected_player_id: str | None = None,
     ) -> NarrativeResult: ...
+
+    def generate_dual_commentary(
+        self,
+        insight: Insight,
+        language: str,
+    ) -> DualCommentaryResult: ...
 
 
 class DeterministicNarrativeGenerator:
@@ -74,6 +89,42 @@ class DeterministicNarrativeGenerator:
             fallback_used=True,
         )
 
+    def generate_dual_commentary(
+        self,
+        insight: Insight,
+        language: str,
+    ) -> DualCommentaryResult:
+        evidence_map = {item.metric: item.value for item in insight.evidence}
+
+        confidence_pct = round(insight.confidence * 100)
+        actions = evidence_map.get("progressive_actions", evidence_map.get("team_b_progressive_actions", "n/a"))
+        entries = evidence_map.get("final_third_entries", "n/a")
+        shots = evidence_map.get("shots", "n/a")
+
+        primary = (
+            f"{insight.title}! Team {insight.team_id.split('_')[-1].upper()} are driving this phase, "
+            f"{insight.summary.rstrip('.')}."
+        )
+        secondary = (
+            f"Absolutely. That's {actions} progressive actions, {entries} final-third entries, "
+            f"and {shots} shots in the window, confidence at {confidence_pct} percent."
+        )
+
+        if language == "fr-FR":
+            primary = "Montée en intensité ! " + insight.summary
+            secondary = f"Oui, c'est confirmé par les données, confiance à {confidence_pct} pour cent."
+        elif language == "sw-KE":
+            primary = "Shinikizo linaongezeka sasa, kasi ya mchezo imebadilika kabisa."
+            secondary = f"Ndiyo, ushahidi unaonyesha uhakika wa asilimia {confidence_pct}."
+
+        return DualCommentaryResult(
+            primary_text=primary,
+            secondary_text=secondary,
+            language=language,
+            fallback_used=True,
+            provider="deterministic",
+        )
+
 
 class FoundryNarrativeGenerator:
     """
@@ -87,6 +138,32 @@ class FoundryNarrativeGenerator:
         self._endpoint = os.getenv("AZURE_FOUNDRY_PROJECT_ENDPOINT")
         self._deployment = os.getenv("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME")
         self._api_key = os.getenv("AZURE_FOUNDRY_API_KEY")
+        self._commentary_playbyplay_agent_name = os.getenv(
+            "FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME",
+            "commentary-playbyplay",
+        )
+        self._commentary_color_agent_name = os.getenv(
+            "FOUNDRY_COMMENTARY_COLOR_AGENT_NAME",
+            "commentary-color",
+        )
+        self._commentary_tuning_version = os.getenv(
+            "FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION",
+            "v1",
+        )
+        self._commentary_playbyplay_profile = os.getenv(
+            "FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE",
+            (
+                "Play-by-play profile: lead male broadcaster voice, rapid visual callouts, "
+                "short clauses, urgency spikes on chances, and natural football idioms."
+            ),
+        )
+        self._commentary_color_profile = os.getenv(
+            "FOUNDRY_COMMENTARY_COLOR_PROFILE",
+            (
+                "Color profile: second male analyst voice, tactical context, explain shape changes, "
+                "support the lead call with concise insight and natural interjections."
+            ),
+        )
         self._project_client: Any | None = None
 
     def generate(
@@ -171,6 +248,88 @@ class FoundryNarrativeGenerator:
             "Return strict JSON with keys title and body.\n\n"
             f"INPUT_JSON:\n{json.dumps(payload, ensure_ascii=False)}"
         )
+
+    def generate_dual_commentary(
+        self,
+        insight: Insight,
+        language: str,
+    ) -> DualCommentaryResult:
+        if not self._is_configured():
+            return self._fallback.generate_dual_commentary(insight=insight, language=language)
+
+        try:
+            prompt = self._build_dual_commentary_prompt(insight=insight, language=language)
+            response_text = self._call_foundry(prompt)
+            parsed = self._parse_dual_commentary_response(response_text)
+            return DualCommentaryResult(
+                primary_text=parsed["primary_text"],
+                secondary_text=parsed["secondary_text"],
+                language=language,
+                fallback_used=False,
+                provider="foundry",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Foundry dual commentary generation failed; using fallback: %s", exc)
+            fallback = self._fallback.generate_dual_commentary(insight=insight, language=language)
+            fallback.provider = "deterministic"
+            return fallback
+
+    def _build_dual_commentary_prompt(self, insight: Insight, language: str) -> str:
+        payload = {
+            "insight_type": insight.type,
+            "title": insight.title,
+            "summary": insight.summary,
+            "confidence": insight.confidence,
+            "window": {
+                "start_ms": insight.window_start_ms,
+                "end_ms": insight.window_end_ms,
+            },
+            "team_id": insight.team_id,
+            "evidence": [
+                {
+                    "metric": item.metric,
+                    "value": item.value,
+                    "unit": item.unit,
+                }
+                for item in insight.evidence
+            ],
+            "language": language,
+            "agent_profiles": {
+                "playbyplay_agent_name": self._commentary_playbyplay_agent_name,
+                "color_agent_name": self._commentary_color_agent_name,
+                "tuning_version": self._commentary_tuning_version,
+                "playbyplay_profile": self._commentary_playbyplay_profile,
+                "color_profile": self._commentary_color_profile,
+            },
+        }
+
+        return (
+            "You are producing live football TV commentary for TWO MALE commentators with distinct roles. "
+            "Commentator A is play-by-play: urgent, visual, concise. "
+            "Commentator B is color analyst: tactical, supportive, concise. "
+            "Treat the provided agent profiles as tuned role instructions and follow them strictly. "
+            "Use only provided evidence. No invented stats. "
+            "Keep each line natural and human, 8-22 words, no robotic phrasing, no markdown, no labels. "
+            "Return strict JSON with keys primary_text and secondary_text.\n\n"
+            f"INPUT_JSON:\n{json.dumps(payload, ensure_ascii=False)}"
+        )
+
+    @staticmethod
+    def _parse_dual_commentary_response(response_text: str) -> dict[str, str]:
+        parsed = json.loads(response_text)
+        if not isinstance(parsed, dict):
+            raise ValueError("Foundry dual commentary response is not a JSON object")
+
+        primary = str(parsed.get("primary_text", "")).strip()
+        secondary = str(parsed.get("secondary_text", "")).strip()
+
+        if not primary or not secondary:
+            raise ValueError("Foundry dual commentary response is missing text")
+
+        return {
+            "primary_text": primary,
+            "secondary_text": secondary,
+        }
 
     def _parse_response(self, response_text: str) -> dict[str, str]:
         parsed = json.loads(response_text)

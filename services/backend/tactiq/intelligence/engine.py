@@ -1,11 +1,44 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import sqrt
 
 from tactiq.domain.models import Event, EvidenceItem, Insight, MatchState, MetricSnapshot
 
 
 WINDOW_MS = 90_000
+PITCH_LENGTH_M = 105.0
+PITCH_WIDTH_M = 68.0
+
+
+def _distance_m(start: Event, end: Event) -> float:
+    if not start.position or not end.end_position:
+        return 0.0
+    dx = ((end.end_position.x - start.position.x) / 100.0) * PITCH_LENGTH_M
+    dy = ((end.end_position.y - start.position.y) / 100.0) * PITCH_WIDTH_M
+    return sqrt((dx * dx) + (dy * dy))
+
+
+def _event_distance_m(event: Event) -> float:
+    if not event.position or not event.end_position:
+        return 0.0
+    dx = ((event.end_position.x - event.position.x) / 100.0) * PITCH_LENGTH_M
+    dy = ((event.end_position.y - event.position.y) / 100.0) * PITCH_WIDTH_M
+    return sqrt((dx * dx) + (dy * dy))
+
+
+def _difficulty_rating(event: Event, distance_m: float) -> float:
+    explicit = event.qualifiers.get("pass_difficulty")
+    if isinstance(explicit, (int, float)):
+        return max(0.0, min(1.0, float(explicit)))
+
+    score = 0.3
+    score += min(0.4, distance_m / 40.0)
+    if bool(event.qualifiers.get("progressive")):
+        score += 0.15
+    if bool(event.qualifiers.get("pressured")):
+        score += 0.15
+    return max(0.0, min(1.0, score))
 
 
 def _window_events(events: list[Event], end_ms: int) -> list[Event]:
@@ -25,6 +58,16 @@ def compute_snapshot(match_id: str, events: list[Event], team_id: str) -> Metric
                 "final_third_entries": 0,
                 "shots": 0,
                 "event_intensity_per_min": 0.0,
+                "pass_attempts": 0,
+                "pass_completed": 0,
+                "pass_accuracy_pct": 0.0,
+                "pass_avg_distance_m": 0.0,
+                "pass_difficulty_avg": 0.0,
+                "ball_speed_kmh_max": 0.0,
+                "shot_speed_kmh_max": 0.0,
+                "top_player_distance_m": 0.0,
+                "top_player_speed_kmh": 0.0,
+                "player_high_speed_actions": 0,
             },
         )
 
@@ -34,18 +77,67 @@ def compute_snapshot(match_id: str, events: list[Event], team_id: str) -> Metric
     progressive = 0
     entries = 0
     shots = 0
+    pass_attempts = 0
+    pass_completed = 0
+    pass_distance_total = 0.0
+    pass_difficulty_total = 0.0
+    pass_difficulty_count = 0
+    ball_speed_max = 0.0
+    shot_speed_max = 0.0
+    player_distance_m: dict[str, float] = defaultdict(float)
+    player_speed_kmh_max: dict[str, float] = defaultdict(float)
+    high_speed_actions = 0
+    previous_by_player: dict[str, Event] = {}
 
     for event in windowed:
         if event.team_id != team_id:
             continue
+
+        player_id = event.player_id
+        if player_id:
+            previous = previous_by_player.get(player_id)
+            if previous and previous.position and event.position:
+                dx = ((event.position.x - previous.position.x) / 100.0) * PITCH_LENGTH_M
+                dy = ((event.position.y - previous.position.y) / 100.0) * PITCH_WIDTH_M
+                segment_m = sqrt((dx * dx) + (dy * dy))
+                delta_s = max(0.2, (event.match_clock_ms - previous.match_clock_ms) / 1000.0)
+                speed_kmh = (segment_m / delta_s) * 3.6
+                player_distance_m[player_id] += segment_m
+                player_speed_kmh_max[player_id] = max(player_speed_kmh_max[player_id], speed_kmh)
+                if speed_kmh >= 24.0:
+                    high_speed_actions += 1
+            previous_by_player[player_id] = event
+
+        event_distance = _event_distance_m(event)
+        if event_distance > 0:
+            delta_s = max(0.2, float(event.qualifiers.get("travel_ms", 600)) / 1000.0)
+            estimated_speed = (event_distance / delta_s) * 3.6
+            ball_speed = float(event.qualifiers.get("ball_speed_kmh", estimated_speed))
+            ball_speed_max = max(ball_speed_max, ball_speed)
+
         if event.type in {"pass_completed", "carry"} and bool(event.qualifiers.get("progressive")):
             progressive += 1
         if bool(event.qualifiers.get("final_third_entry")):
             entries += 1
         if event.type == "shot":
             shots += 1
+            shot_speed = float(event.qualifiers.get("shot_speed_kmh", ball_speed_max))
+            shot_speed_max = max(shot_speed_max, shot_speed)
+
+        if event.type in {"pass_completed", "pass_incomplete"}:
+            pass_attempts += 1
+            pass_difficulty_total += _difficulty_rating(event, event_distance)
+            pass_difficulty_count += 1
+            if event.type == "pass_completed":
+                pass_completed += 1
+                pass_distance_total += event_distance
 
     intensity = (len(windowed) / (WINDOW_MS / 60_000)) if WINDOW_MS else 0.0
+    pass_accuracy = (pass_completed / pass_attempts * 100.0) if pass_attempts else 0.0
+    pass_avg_distance = (pass_distance_total / pass_completed) if pass_completed else 0.0
+    pass_difficulty_avg = (pass_difficulty_total / pass_difficulty_count) if pass_difficulty_count else 0.0
+    top_player_distance = max(player_distance_m.values()) if player_distance_m else 0.0
+    top_player_speed = max(player_speed_kmh_max.values()) if player_speed_kmh_max else 0.0
 
     return MetricSnapshot(
         match_id=match_id,
@@ -57,6 +149,16 @@ def compute_snapshot(match_id: str, events: list[Event], team_id: str) -> Metric
             "final_third_entries": entries,
             "shots": shots,
             "event_intensity_per_min": round(intensity, 2),
+            "pass_attempts": pass_attempts,
+            "pass_completed": pass_completed,
+            "pass_accuracy_pct": round(pass_accuracy, 1),
+            "pass_avg_distance_m": round(pass_avg_distance, 2),
+            "pass_difficulty_avg": round(pass_difficulty_avg, 2),
+            "ball_speed_kmh_max": round(ball_speed_max, 1),
+            "shot_speed_kmh_max": round(shot_speed_max, 1),
+            "top_player_distance_m": round(top_player_distance, 1),
+            "top_player_speed_kmh": round(top_player_speed, 1),
+            "player_high_speed_actions": high_speed_actions,
         },
     )
 
@@ -191,11 +293,45 @@ def detect_player_influence(match_state: MatchState, events: list[Event], existi
     )
 
 
+def detect_player_speed_burst(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> Insight | None:
+    if not events or any(i.type == "player_speed_burst" for i in existing_insights):
+        return None
+
+    team_id = "team_a"
+    snapshot = compute_snapshot(match_state.match_id, events, team_id)
+    top_speed = float(snapshot.metrics.get("top_player_speed_kmh", 0.0))
+    high_speed_actions = int(snapshot.metrics.get("player_high_speed_actions", 0))
+
+    if not (top_speed >= 24.0 and high_speed_actions >= 1):
+        return None
+
+    windowed = _window_events(events, events[-1].match_clock_ms)
+    supporting = [e.event_id for e in windowed if e.team_id == team_id]
+    evidence = [
+        EvidenceItem(metric="top_player_speed_kmh", value=round(top_speed, 1), unit="km/h", supporting_event_ids=supporting),
+        EvidenceItem(metric="player_high_speed_actions", value=high_speed_actions, unit="count", supporting_event_ids=supporting),
+    ]
+
+    return Insight(
+        match_id=match_state.match_id,
+        type="player_speed_burst",
+        priority="medium",
+        confidence=0.82,
+        team_id=team_id,
+        window_start_ms=max(0, events[-1].match_clock_ms - WINDOW_MS),
+        window_end_ms=events[-1].match_clock_ms,
+        title="Speed Burst Detected",
+        summary="A rapid acceleration phase has emerged, increasing attacking threat and transition risk.",
+        evidence=evidence,
+    )
+
+
 def detect_insights(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> list[Insight]:
     candidates = [
         detect_sustained_pressure(match_state, events, existing_insights),
         detect_rhythm_shift(match_state, events, existing_insights),
         detect_player_influence(match_state, events, existing_insights),
+        detect_player_speed_burst(match_state, events, existing_insights),
     ]
     return [c for c in candidates if c is not None]
 
