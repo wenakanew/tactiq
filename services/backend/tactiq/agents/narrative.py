@@ -28,6 +28,15 @@ class DualCommentaryResult:
     language: str
     fallback_used: bool
     provider: str = "deterministic"
+    audit: dict[str, Any] | None = None
+
+
+@dataclass
+class CommentaryAgentResolution:
+    name: str
+    instructions: str
+    version: str | None
+    source: str
 
 
 class NarrativeGenerator(Protocol):
@@ -123,6 +132,11 @@ class DeterministicNarrativeGenerator:
             language=language,
             fallback_used=True,
             provider="deterministic",
+            audit={
+                "orchestration_path": "deterministic",
+                "agents": [],
+                "tuning_version": None,
+            },
         )
 
 
@@ -164,7 +178,12 @@ class FoundryNarrativeGenerator:
                 "support the lead call with concise insight and natural interjections."
             ),
         )
+        self._use_direct_commentary_agents = os.getenv(
+            "FOUNDRY_COMMENTARY_USE_DIRECT_AGENTS",
+            "true",
+        ).lower() in {"1", "true", "yes", "on"}
         self._project_client: Any | None = None
+        self._agents_client: Any | None = None
 
     def generate(
         self,
@@ -258,6 +277,11 @@ class FoundryNarrativeGenerator:
             return self._fallback.generate_dual_commentary(insight=insight, language=language)
 
         try:
+            if self._use_direct_commentary_agents:
+                direct_result = self._generate_dual_commentary_via_agents(insight=insight, language=language)
+                if direct_result is not None:
+                    return direct_result
+
             prompt = self._build_dual_commentary_prompt(insight=insight, language=language)
             response_text = self._call_foundry(prompt)
             parsed = self._parse_dual_commentary_response(response_text)
@@ -267,12 +291,174 @@ class FoundryNarrativeGenerator:
                 language=language,
                 fallback_used=False,
                 provider="foundry",
+                audit={
+                    "orchestration_path": "foundry-prompt",
+                    "agents": [
+                        {
+                            "name": self._commentary_playbyplay_agent_name,
+                            "version": self._commentary_tuning_version,
+                            "source": "prompt-profile",
+                            "instructions": self._commentary_playbyplay_profile,
+                        },
+                        {
+                            "name": self._commentary_color_agent_name,
+                            "version": self._commentary_tuning_version,
+                            "source": "prompt-profile",
+                            "instructions": self._commentary_color_profile,
+                        },
+                    ],
+                    "tuning_version": self._commentary_tuning_version,
+                },
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Foundry dual commentary generation failed; using fallback: %s", exc)
             fallback = self._fallback.generate_dual_commentary(insight=insight, language=language)
             fallback.provider = "deterministic"
             return fallback
+
+    def _generate_dual_commentary_via_agents(self, insight: Insight, language: str) -> DualCommentaryResult | None:
+        lead_resolution = self._resolve_commentary_agent_instructions(
+            agent_name=self._commentary_playbyplay_agent_name,
+            fallback_profile=self._commentary_playbyplay_profile,
+        )
+        analyst_resolution = self._resolve_commentary_agent_instructions(
+            agent_name=self._commentary_color_agent_name,
+            fallback_profile=self._commentary_color_profile,
+        )
+
+        if not lead_resolution or not analyst_resolution:
+            return None
+
+        payload = {
+            "insight_type": insight.type,
+            "title": insight.title,
+            "summary": insight.summary,
+            "confidence": insight.confidence,
+            "window": {
+                "start_ms": insight.window_start_ms,
+                "end_ms": insight.window_end_ms,
+            },
+            "team_id": insight.team_id,
+            "evidence": [
+                {
+                    "metric": item.metric,
+                    "value": item.value,
+                    "unit": item.unit,
+                }
+                for item in insight.evidence
+            ],
+            "language": language,
+            "tuning_version": self._commentary_tuning_version,
+        }
+
+        lead_user_prompt = (
+            "Generate ONE lead play-by-play line for this live moment. "
+            "Return plain text only, 8-22 words, no labels, no markdown, no JSON. "
+            f"INPUT_JSON: {json.dumps(payload, ensure_ascii=False)}"
+        )
+        lead_text = self._sanitize_commentary_line(
+            self._call_foundry_with_system(
+                user_prompt=lead_user_prompt,
+                system_prompt=lead_resolution.instructions,
+                max_completion_tokens=90,
+            )
+        )
+
+        analyst_user_prompt = (
+            "Generate ONE color-analyst response line that complements the lead line. "
+            "Do not repeat the lead text. Return plain text only, 8-22 words, no labels, no markdown, no JSON. "
+            f"LEAD_LINE: {lead_text}\n"
+            f"INPUT_JSON: {json.dumps(payload, ensure_ascii=False)}"
+        )
+        analyst_text = self._sanitize_commentary_line(
+            self._call_foundry_with_system(
+                user_prompt=analyst_user_prompt,
+                system_prompt=analyst_resolution.instructions,
+                max_completion_tokens=90,
+            )
+        )
+
+        if not lead_text or not analyst_text:
+            return None
+
+        return DualCommentaryResult(
+            primary_text=lead_text,
+            secondary_text=analyst_text,
+            language=language,
+            fallback_used=False,
+            provider="foundry-agents-direct",
+            audit={
+                "orchestration_path": "foundry-agents-direct",
+                "agents": [
+                    {
+                        "name": lead_resolution.name,
+                        "version": lead_resolution.version,
+                        "source": lead_resolution.source,
+                        "instructions": lead_resolution.instructions,
+                    },
+                    {
+                        "name": analyst_resolution.name,
+                        "version": analyst_resolution.version,
+                        "source": analyst_resolution.source,
+                        "instructions": analyst_resolution.instructions,
+                    },
+                ],
+                "tuning_version": self._commentary_tuning_version,
+            },
+        )
+
+    def _resolve_commentary_agent_instructions(
+        self,
+        agent_name: str,
+        fallback_profile: str,
+    ) -> CommentaryAgentResolution | None:
+        try:
+            client = self._ensure_agents_client()
+            versions = list(client.agents.list_versions(agent_name=agent_name, limit=1))
+            if versions:
+                definition = getattr(versions[0], "definition", None)
+                if isinstance(definition, dict):
+                    instructions = str(definition.get("instructions", "")).strip()
+                    if instructions:
+                        version_name = getattr(versions[0], "name", None)
+                        return CommentaryAgentResolution(
+                            name=agent_name,
+                            instructions=instructions,
+                            version=str(version_name) if version_name is not None else None,
+                            source="foundry-agent-version",
+                        )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Unable to fetch Foundry agent instructions for %s: %s", agent_name, exc)
+
+        fallback = fallback_profile.strip()
+        if not fallback:
+            return None
+
+        return CommentaryAgentResolution(
+            name=agent_name,
+            instructions=fallback,
+            version=self._commentary_tuning_version,
+            source="env-fallback-profile",
+        )
+
+    @staticmethod
+    def _sanitize_commentary_line(text: str) -> str:
+        normalized = " ".join(text.replace("\n", " ").split()).strip()
+        if not normalized:
+            return ""
+
+        if normalized.startswith("{"):
+            try:
+                parsed = json.loads(normalized)
+                if isinstance(parsed, dict):
+                    for key in ("line", "text", "primary_text", "secondary_text"):
+                        value = parsed.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return " ".join(value.strip().split())
+            except Exception:  # noqa: BLE001
+                pass
+
+        return normalized.strip('"').strip()
 
     def _build_dual_commentary_prompt(self, insight: Insight, language: str) -> str:
         payload = {
@@ -359,11 +545,31 @@ class FoundryNarrativeGenerator:
         self._project_client = AIProjectClient(endpoint=self._endpoint, credential=credential)
         return self._project_client
 
+    def _ensure_agents_client(self) -> Any:
+        if self._agents_client is not None:
+            return self._agents_client
+
+        from azure.ai.projects import AIProjectClient  # type: ignore[import-not-found]
+        from azure.identity import DefaultAzureCredential  # type: ignore[import-not-found]
+
+        self._agents_client = AIProjectClient(
+            endpoint=self._endpoint,
+            credential=DefaultAzureCredential(),
+        )
+        return self._agents_client
+
     def _call_foundry(self, prompt: str) -> str:
+        return self._call_foundry_with_system(
+            user_prompt=prompt,
+            system_prompt="Return strict JSON only.",
+            max_completion_tokens=220,
+        )
+
+    def _call_foundry_with_system(self, user_prompt: str, system_prompt: str, max_completion_tokens: int) -> str:
         client = self._ensure_client()
         messages = [
-            {"role": "system", "content": "Return strict JSON only."},
-            {"role": "user", "content": prompt},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
         ]
 
         # Preferred path for current azure-ai-projects SDK versions.
@@ -377,7 +583,7 @@ class FoundryNarrativeGenerator:
             response = openai_client.chat.completions.create(
                 model=self._deployment,
                 messages=messages,
-                max_completion_tokens=220,
+                max_completion_tokens=max_completion_tokens,
             )
         else:
             # Backward-compatibility path for older SDK surfaces.
@@ -393,7 +599,7 @@ class FoundryNarrativeGenerator:
             response = chat_client.complete(
                 model=self._deployment,
                 messages=messages,
-                max_tokens=220,
+                max_tokens=max_completion_tokens,
             )
 
         choices = getattr(response, "choices", None)

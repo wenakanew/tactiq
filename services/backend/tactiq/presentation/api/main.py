@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -324,6 +324,18 @@ def generate_dual_commentary(match_id: str, payload: DualCommentaryRequest) -> d
         "language": result.language,
         "fallback_used": result.fallback_used,
         "provider": result.provider,
+    }
+
+
+@app.get("/api/v1/matches/{match_id}/commentary/debug")
+def get_commentary_debug(match_id: str, limit: int = Query(default=20, ge=1, le=100)) -> dict:
+    if match_id not in service.matches:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    return {
+        "match_id": match_id,
+        "count": len(service.commentary_audit_log.get(match_id, [])),
+        "entries": service.get_commentary_audit(match_id=match_id, limit=limit),
     }
 
 

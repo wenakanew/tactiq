@@ -1,0 +1,19 @@
+
+> match-intelligence-web@0.1.0 dev
+> next dev
+
+  ▲ Next.js 15.0.0
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · typedRoutes
+
+ ✓ Starting...
+ ✓ Ready in 16.3s
+ ○ Compiling / ...
+ ✓ Compiled / in 4.3s (527 modules)
+ GET / 200 in 7300ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 3.6s (530 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 4212ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 215ms

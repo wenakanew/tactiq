@@ -1,0 +1,14 @@
+INFO:     Started server process [33644]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8765 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52280 - "WebSocket /api/v1/ws/matches/match_cc5d4ca6" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:61862 - "WebSocket /api/v1/ws/matches/match_5a611ee3" [accepted]
+INFO:     connection open
+Foundry dual commentary generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+Foundry narrative generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+Foundry dual commentary generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+Foundry dual commentary generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+Foundry narrative generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}
+Foundry narrative generation failed; using fallback: Error code: 429 - {'error': {'message': 'Your requests to gpt-5.6-sol for gpt-5.6-sol in southafricanorth have exceeded request rate limit.', 'type': 'too_many_requests', 'param': None, 'code': 'rate_limit_exceeded'}}

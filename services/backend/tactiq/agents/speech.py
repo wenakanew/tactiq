@@ -4,7 +4,10 @@ from dataclasses import dataclass
 import base64
 import logging
 import os
+from urllib.parse import urlparse
 from xml.sax.saxutils import escape
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,8 @@ class AzureSpeechSynthesizer:
     def __init__(self) -> None:
         self._endpoint = os.getenv("AZURE_SPEECH_ENDPOINT")
         self._key = os.getenv("AZURE_SPEECH_API_KEY")
+        self._region = os.getenv("AZURE_SPEECH_REGION")
+        self._force_rest = os.getenv("AZURE_SPEECH_FORCE_REST", "true").lower() in {"1", "true", "yes", "on"}
         self._commentator_a_voice = os.getenv("AZURE_SPEECH_COMMENTATOR_A_VOICE")
         self._commentator_b_voice = os.getenv("AZURE_SPEECH_COMMENTATOR_B_VOICE")
 
@@ -39,20 +44,6 @@ class AzureSpeechSynthesizer:
         if not self.is_configured():
             raise RuntimeError("Azure Speech is not configured")
 
-        try:
-            import azure.cognitiveservices.speech as speechsdk  # type: ignore[import-not-found]
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError("Azure Speech SDK is not installed") from exc
-
-        speech_config = speechsdk.SpeechConfig(
-            endpoint=self._endpoint,
-            subscription=self._key,
-        )
-        speech_config.speech_synthesis_language = language
-        speech_config.set_speech_synthesis_output_format(
-            speechsdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3,
-        )
-
         ssml = self._single_commentary_ssml(
             text=text,
             language=language,
@@ -60,21 +51,14 @@ class AzureSpeechSynthesizer:
             rate=rate,
             pitch=pitch,
         )
+        if self._force_rest:
+            return self._synthesize_with_rest(ssml=ssml, provider="azure-speech-rest")
 
-        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
-        result = synthesizer.speak_ssml_async(ssml).get()
-
-        if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
-            details = speechsdk.CancellationDetails(result)
-            logger.warning("Azure Speech synthesis failed: %s", details.reason)
-            raise RuntimeError("Azure Speech synthesis failed")
-
-        audio_base64 = base64.b64encode(result.audio_data).decode("utf-8")
-        return SpeechResult(
-            audio_base64=audio_base64,
-            content_type="audio/mpeg",
-            provider="azure-speech",
-        )
+        try:
+            return self._synthesize_with_sdk(ssml=ssml, language=language, provider="azure-speech")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Azure Speech SDK path failed, falling back to REST: %s", exc)
+            return self._synthesize_with_rest(ssml=ssml, provider="azure-speech-rest")
 
     def synthesize_dual_commentary(
         self,
@@ -89,43 +73,124 @@ class AzureSpeechSynthesizer:
         if not self.is_configured():
             raise RuntimeError("Azure Speech is not configured")
 
+        voice_a, voice_b = self._commentator_pair_for(language)
+
+        primary_result = self.synthesize(
+            text=primary_text,
+            language=language,
+            voice=primary_voice or voice_a,
+            rate="+8%",
+            pitch="+1st",
+        )
+        secondary_result = self.synthesize(
+            text=secondary_text,
+            language=language,
+            voice=secondary_voice or voice_b,
+            rate="-4%",
+            pitch="-3st",
+        )
+
+        primary_audio = base64.b64decode(primary_result.audio_base64)
+        secondary_audio = base64.b64decode(secondary_result.audio_base64)
+        stitched_audio = primary_audio + secondary_audio
+
+        return SpeechResult(
+            audio_base64=base64.b64encode(stitched_audio).decode("utf-8"),
+            content_type="audio/mpeg",
+            provider=f"azure-speech-duo-stitch({primary_result.provider},{secondary_result.provider})",
+        )
+
+    def _synthesize_with_sdk(self, ssml: str, language: str, provider: str) -> SpeechResult:
         try:
             import azure.cognitiveservices.speech as speechsdk  # type: ignore[import-not-found]
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("Azure Speech SDK is not installed") from exc
 
-        speech_config = speechsdk.SpeechConfig(
-            endpoint=self._endpoint,
-            subscription=self._key,
-        )
+        if self._region:
+            speech_config = speechsdk.SpeechConfig(
+                subscription=self._key,
+                region=self._region,
+            )
+        else:
+            speech_config = speechsdk.SpeechConfig(
+                endpoint=self._endpoint,
+                subscription=self._key,
+            )
         speech_config.speech_synthesis_language = language
         speech_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3,
         )
-
-        voice_a, voice_b = self._commentator_pair_for(language)
-        ssml = self._dual_commentary_ssml(
-            primary_text=primary_text,
-            secondary_text=secondary_text,
-            language=language,
-            primary_voice=primary_voice or voice_a,
-            secondary_voice=secondary_voice or voice_b,
-        )
-
         synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
         result = synthesizer.speak_ssml_async(ssml).get()
-
         if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
             details = speechsdk.CancellationDetails(result)
-            logger.warning("Azure Speech dual synthesis failed: %s", details.reason)
-            raise RuntimeError("Azure Speech dual synthesis failed")
+            logger.warning("Azure Speech SDK synthesis failed: %s", details.reason)
+            raise RuntimeError("Azure Speech SDK synthesis failed")
 
         audio_base64 = base64.b64encode(result.audio_data).decode("utf-8")
-        return SpeechResult(
-            audio_base64=audio_base64,
-            content_type="audio/mpeg",
-            provider="azure-speech-duo",
-        )
+        return SpeechResult(audio_base64=audio_base64, content_type="audio/mpeg", provider=provider)
+
+    def _synthesize_with_rest(self, ssml: str, provider: str) -> SpeechResult:
+        if not self._endpoint or not self._key:
+            raise RuntimeError("Azure Speech is not configured")
+
+        errors: list[str] = []
+        for endpoint in self._speech_rest_urls(self._endpoint, self._region):
+            headers = {
+                "Ocp-Apim-Subscription-Key": self._key,
+                "Content-Type": "application/ssml+xml",
+                "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+                "User-Agent": "tactiq",
+            }
+            if self._region:
+                headers["Ocp-Apim-Subscription-Region"] = self._region
+
+            for attempt in range(1, 4):
+                try:
+                    response = requests.post(
+                        endpoint,
+                        data=ssml.encode("utf-8"),
+                        headers=headers,
+                        timeout=12,
+                    )
+                    if response.status_code >= 400:
+                        detail = response.text[:180] if response.text else ""
+                        errors.append(f"{endpoint} attempt {attempt} -> HTTP {response.status_code} {detail}")
+                        continue
+
+                    audio_bytes = response.content
+                    audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
+                    return SpeechResult(audio_base64=audio_base64, content_type="audio/mpeg", provider=provider)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"{endpoint} attempt {attempt} -> {type(exc).__name__} {str(exc)[:120]}")
+
+        logger.warning("Azure Speech REST synthesis failed on all endpoints: %s", "; ".join(errors))
+        raise RuntimeError("Azure Speech synthesis failed")
+
+    @staticmethod
+    def _speech_rest_urls(endpoint: str, region: str | None) -> list[str]:
+        urls: list[str] = []
+        if region:
+            urls.append(f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1")
+
+        normalized = endpoint.strip()
+        if not normalized:
+            raise RuntimeError("Azure Speech endpoint is not configured")
+
+        if "cognitiveservices/v1" in normalized:
+            urls.append(normalized)
+            return list(dict.fromkeys(urls))
+
+        parsed = urlparse(normalized)
+        if not parsed.scheme:
+            parsed = urlparse(f"https://{normalized}")
+
+        if not parsed.netloc:
+            raise RuntimeError("Azure Speech endpoint is invalid")
+
+        urls.append(f"{parsed.scheme}://{parsed.netloc}/cognitiveservices/v1")
+        urls.append(f"{parsed.scheme}://{parsed.netloc}/tts/cognitiveservices/v1")
+        return list(dict.fromkeys(urls))
 
     @staticmethod
     def _default_voice_for(language: str) -> str:

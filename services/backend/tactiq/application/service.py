@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from datetime import datetime, timezone
 from statistics import mean
+from typing import Any
 from uuid import uuid4
 
 from tactiq.agents.narrative import (
@@ -26,6 +28,8 @@ class MatchService:
         self.subscribers: dict[str, set[asyncio.Queue[dict]]] = defaultdict(set)
         self.tasks: dict[str, asyncio.Task] = {}
         self.viewer_profiles: dict[str, dict[str, str]] = defaultdict(dict)
+        self.commentary_audit_log: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self.commentary_audit_max_entries = 100
         self.narrative_generator = FoundryNarrativeGenerator(DeterministicNarrativeGenerator())
         self.speech_synthesizer = AzureSpeechSynthesizer()
 
@@ -133,10 +137,32 @@ class MatchService:
         else:
             target = insights[-1]
 
-        return self.narrative_generator.generate_dual_commentary(
+        result = self.narrative_generator.generate_dual_commentary(
             insight=target,
             language=language,
         )
+
+        entry = {
+            "call_id": f"commentary_{uuid4().hex[:12]}",
+            "timestamp_utc": datetime.now(tz=timezone.utc).isoformat(),
+            "match_id": match_id,
+            "insight_id": target.insight_id,
+            "language": language,
+            "provider": result.provider,
+            "fallback_used": result.fallback_used,
+            "primary_text": result.primary_text,
+            "secondary_text": result.secondary_text,
+            "audit": result.audit or {},
+        }
+        self.commentary_audit_log[match_id].append(entry)
+        self.commentary_audit_log[match_id] = self.commentary_audit_log[match_id][-self.commentary_audit_max_entries :]
+
+        return result
+
+    def get_commentary_audit(self, match_id: str, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, self.commentary_audit_max_entries))
+        entries = self.commentary_audit_log.get(match_id, [])
+        return list(reversed(entries[-safe_limit:]))
 
     def set_viewer_profile(
         self,
