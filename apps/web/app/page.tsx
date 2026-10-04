@@ -27,7 +27,35 @@ type VideoIngestionResponse = {
   insights: Insight[];
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+type CommentaryAuditAgent = {
+  name: string;
+  version?: string | null;
+  source?: string;
+  instructions?: string;
+};
+
+type CommentaryAuditEntry = {
+  call_id: string;
+  timestamp_utc: string;
+  match_id: string;
+  insight_id: string;
+  language: string;
+  provider: string;
+  fallback_used: boolean;
+  primary_text: string;
+  secondary_text: string;
+  audit?: {
+    orchestration_path?: string;
+    tuning_version?: string | null;
+    agents?: CommentaryAuditAgent[];
+  };
+};
+
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : "http://localhost:8000");
 
 function voicePairFor(language: string): { primary: string; secondary: string } {
   switch (language) {
@@ -49,8 +77,122 @@ function browserVoicePair(language: string): { primary: SpeechSynthesisVoice | n
 
   const voices = window.speechSynthesis.getVoices();
   const localeVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith(language.toLowerCase().split("-")[0]));
-  const primary = localeVoices[0] ?? voices[0] ?? null;
-  const secondary = localeVoices[1] ?? voices[1] ?? primary;
+  const sourceVoices = localeVoices.length > 0 ? localeVoices : voices;
+  const maleHints = [
+    "ryan",
+    "thomas",
+    "henri",
+    "rafiki",
+    "guy",
+    "david",
+    "george",
+    "james",
+    "liam",
+    "oliver",
+    "male",
+    "man",
+    "andrew",
+    "brian",
+    "christopher",
+    "eric",
+    "jacob",
+    "roger",
+    "tony",
+    "davis",
+    "mark",
+    "daniel",
+    "matthew",
+  ];
+  const femaleHints = ["female", "woman", "aria", "zira", "jenny", "sara", "denise", "ava", "susan", "emma"];
+
+  const maleVoices = sourceVoices.filter((voice) => {
+    const normalized = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return maleHints.some((hint) => normalized.includes(hint));
+  });
+
+  const neutralNonFemaleVoices = sourceVoices.filter((voice) => {
+    const normalized = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return !femaleHints.some((hint) => normalized.includes(hint));
+  });
+
+  const fallbackPool = maleVoices.length > 0 ? maleVoices : neutralNonFemaleVoices.length > 0 ? neutralNonFemaleVoices : sourceVoices;
+  const primary = fallbackPool[0] ?? null;
+  const secondary = fallbackPool[1] ?? fallbackPool.find((voice) => voice !== primary) ?? primary;
+  return { primary, secondary };
+}
+
+async function getBrowserVoicesWithRetry(timeoutMs = 1200): Promise<SpeechSynthesisVoice[]> {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    return [];
+  }
+
+  const initial = window.speechSynthesis.getVoices();
+  if (initial.length > 0) {
+    return initial;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const complete = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+      resolve(window.speechSynthesis.getVoices());
+    };
+
+    const onVoicesChanged = () => complete();
+    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+    setTimeout(complete, timeoutMs);
+  });
+}
+
+function browserStrictMaleVoicePair(language: string): { primary: SpeechSynthesisVoice | null; secondary: SpeechSynthesisVoice | null } {
+  if (typeof window === "undefined" || !window.speechSynthesis) {
+    return { primary: null, secondary: null };
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  const localeVoices = voices.filter((v) => v.lang?.toLowerCase().startsWith(language.toLowerCase().split("-")[0]));
+  const sourceVoices = localeVoices.length > 0 ? localeVoices : voices;
+  const maleHints = [
+    "ryan",
+    "thomas",
+    "henri",
+    "rafiki",
+    "guy",
+    "david",
+    "george",
+    "james",
+    "liam",
+    "oliver",
+    "male",
+    "man",
+    "andrew",
+    "brian",
+    "christopher",
+    "eric",
+    "jacob",
+    "roger",
+    "tony",
+    "davis",
+    "mark",
+    "daniel",
+    "matthew",
+  ];
+
+  const maleVoices = sourceVoices.filter((voice) => {
+    const normalized = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return maleHints.some((hint) => normalized.includes(hint));
+  });
+
+  if (maleVoices.length === 0) {
+    return { primary: null, secondary: null };
+  }
+
+  const primary = maleVoices[0] ?? null;
+  const secondary = maleVoices[1] ?? maleVoices.find((voice) => voice !== primary) ?? primary;
   return { primary, secondary };
 }
 
@@ -76,6 +218,8 @@ export default function HomePage() {
   const [videoSummary, setVideoSummary] = useState<VideoIngestionResponse | null>(null);
   const [liveCommentaryEnabled, setLiveCommentaryEnabled] = useState<boolean>(true);
   const [dualCommentaryEnabled, setDualCommentaryEnabled] = useState<boolean>(true);
+  const [commentaryAudit, setCommentaryAudit] = useState<CommentaryAuditEntry[]>([]);
+  const [commentaryAuditStatus, setCommentaryAuditStatus] = useState<string>("idle");
   const wsRef = useRef<WebSocket | null>(null);
   const speechQueueRef = useRef<Array<{ primary: string; secondary?: string }>>([]);
   const speakingRef = useRef<boolean>(false);
@@ -104,9 +248,32 @@ export default function HomePage() {
       if (!payload.primary_text || !payload.secondary_text) {
         return null;
       }
+      void fetchCommentaryAudit(effectiveMatchId);
       return payload;
     } catch {
       return null;
+    }
+  }
+
+  async function fetchCommentaryAudit(targetMatchId?: string) {
+    const effectiveMatchId = targetMatchId ?? matchId;
+    if (!effectiveMatchId) {
+      return;
+    }
+
+    setCommentaryAuditStatus("loading");
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/matches/${effectiveMatchId}/commentary/debug?limit=10`);
+      if (!response.ok) {
+        setCommentaryAuditStatus("unavailable");
+        return;
+      }
+
+      const payload = (await response.json()) as { entries?: CommentaryAuditEntry[] };
+      setCommentaryAudit(payload.entries ?? []);
+      setCommentaryAuditStatus("ready");
+    } catch {
+      setCommentaryAuditStatus("error");
     }
   }
 
@@ -120,6 +287,8 @@ export default function HomePage() {
     setRecap("");
     setRecapMeta("");
     setVideoSummary(null);
+    setCommentaryAudit([]);
+    setCommentaryAuditStatus("idle");
 
     if (scenarios.length === 0) {
       const available = (await fetch(`${API_BASE}/api/v1/scenarios`).then((res) => res.json())) as Scenario[];
@@ -153,6 +322,8 @@ export default function HomePage() {
     setNarrativeMeta("");
     setRecap("");
     setRecapMeta("");
+    setCommentaryAudit([]);
+    setCommentaryAuditStatus("idle");
   }
 
   async function uploadVideo() {
@@ -304,6 +475,50 @@ export default function HomePage() {
         };
         void audio.play().catch(reject);
       });
+      return;
+    }
+
+    if (secondary) {
+      if (typeof window === "undefined" || !window.speechSynthesis) {
+        setSpeechStatus("cloud dual speech unavailable");
+        return;
+      }
+
+      const loadedVoices = await getBrowserVoicesWithRetry();
+      if (loadedVoices.length > 0) {
+        // Prime voices for browsers that lazy-load and expose them after first access.
+        window.speechSynthesis.getVoices();
+      }
+
+      const pair = browserStrictMaleVoicePair(language);
+      if (!pair.primary) {
+        setSpeechStatus("cloud dual speech unavailable (no male browser voice)");
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+      const speakOnce = (text: string, voice: SpeechSynthesisVoice | null, rate: number, pitch: number) =>
+        new Promise<void>((resolve, reject) => {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = language;
+          u.rate = rate;
+          u.pitch = pitch;
+          if (voice) {
+            u.voice = voice;
+          }
+          u.onstart = () => setSpeechStatus(`speaking dual via browser male (${language})`);
+          u.onend = () => resolve();
+          u.onerror = () => reject(new Error("browser speech error"));
+          window.speechSynthesis.speak(u);
+        });
+
+      try {
+        await speakOnce(primary, pair.primary, 1.04, 0.98);
+        await speakOnce(secondary, pair.secondary, 0.98, 0.9);
+        setSpeechStatus("done");
+      } catch {
+        setSpeechStatus("browser speech error");
+      }
       return;
     }
 
@@ -508,6 +723,7 @@ export default function HomePage() {
         <button onClick={generateNarrative}>Generate narrative</button>
         <button onClick={generateRecap}>Generate recap</button>
         <button onClick={speakCurrentText}>Speak current text</button>
+        <button onClick={() => fetchCommentaryAudit()} disabled={!matchId}>Refresh commentary audit</button>
         <label htmlFor="live-commentary" style={{ marginLeft: 12 }}>
           <input
             id="live-commentary"
@@ -531,6 +747,32 @@ export default function HomePage() {
         {narrative ? <p>{narrative}</p> : <p>No narrative yet.</p>}
         {recapMeta ? <p>{recapMeta}</p> : null}
         {recap ? <p>{recap}</p> : null}
+        <p>Commentary audit: {commentaryAuditStatus}</p>
+        {commentaryAudit.length > 0 ? (
+          <details>
+            <summary>Latest orchestration calls ({commentaryAudit.length})</summary>
+            {commentaryAudit.map((entry) => (
+              <div key={entry.call_id} style={{ border: "1px solid #ddd", padding: 8, marginTop: 8 }}>
+                <p>
+                  <strong>{entry.provider}</strong> • fallback={String(entry.fallback_used)} • insight={entry.insight_id}
+                </p>
+                <p>
+                  path={entry.audit?.orchestration_path ?? "n/a"} • tuning={entry.audit?.tuning_version ?? "n/a"}
+                </p>
+                <p>lead: {entry.primary_text}</p>
+                <p>analyst: {entry.secondary_text}</p>
+                {(entry.audit?.agents ?? []).map((agent) => (
+                  <div key={`${entry.call_id}-${agent.name}-${agent.version ?? "none"}`} style={{ marginLeft: 12 }}>
+                    <p>
+                      <strong>{agent.name}</strong> • version={agent.version ?? "n/a"} • source={agent.source ?? "n/a"}
+                    </p>
+                    <p style={{ whiteSpace: "pre-wrap" }}>{agent.instructions ?? ""}</p>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </details>
+        ) : null}
       </div>
 
       <div className="card">
