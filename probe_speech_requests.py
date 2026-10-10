@@ -1,30 +1,60 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
 root = Path(__file__).resolve().parent
-for line in (root / ".env").read_text(encoding="utf-8").splitlines():
-    line = line.strip()
-    if line and not line.startswith("#") and "=" in line:
-        key, value = line.split("=", 1)
-        os.environ[key.strip()] = value.strip()
+
+
+def _load_dotenv_if_present(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def _speech_rest_url() -> str:
+    region = os.environ.get("AZURE_SPEECH_REGION", "").strip()
+    endpoint = os.environ.get("AZURE_SPEECH_ENDPOINT", "").strip()
+    if region:
+        return f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
+    if endpoint:
+        parsed = urlparse(endpoint if "://" in endpoint else f"https://{endpoint}")
+        return f"{parsed.scheme}://{parsed.netloc}/cognitiveservices/v1"
+    raise RuntimeError("Set AZURE_SPEECH_REGION or AZURE_SPEECH_ENDPOINT")
+
+
+_load_dotenv_if_present(root / ".env")
+
+language = os.environ.get("TACTIQ_PROBE_LANGUAGE", "")
+voice = os.environ.get("TACTIQ_PROBE_VOICE", "")
+speech_text = os.environ.get("TACTIQ_PROBE_TEXT", "")
+region = os.environ.get("AZURE_SPEECH_REGION", "")
+
+if not language or not voice or not speech_text:
+    raise RuntimeError("TACTIQ_PROBE_LANGUAGE, TACTIQ_PROBE_VOICE, and TACTIQ_PROBE_TEXT must be set")
+if not region:
+    raise RuntimeError("AZURE_SPEECH_REGION must be set")
 
 ssml = (
-    "<speak version='1.0' xml:lang='en-GB' xmlns='http://www.w3.org/2001/10/synthesis'>"
-    "<voice name='en-GB-RyanNeural'>Testing from python requests</voice>"
+    f"<speak version='1.0' xml:lang='{language}' xmlns='http://www.w3.org/2001/10/synthesis'>"
+    f"<voice name='{voice}'>{speech_text}</voice>"
     "</speak>"
 )
 headers = {
     "Ocp-Apim-Subscription-Key": os.environ["AZURE_SPEECH_API_KEY"],
-    "Ocp-Apim-Subscription-Region": os.environ.get("AZURE_SPEECH_REGION", "southafricanorth"),
+    "Ocp-Apim-Subscription-Region": region,
     "Content-Type": "application/ssml+xml",
     "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
     "User-Agent": "tactiq",
 }
 
 resp = requests.post(
-    "https://southafricanorth.tts.speech.microsoft.com/cognitiveservices/v1",
+    _speech_rest_url(),
     data=ssml.encode("utf-8"),
     headers=headers,
     timeout=30,
