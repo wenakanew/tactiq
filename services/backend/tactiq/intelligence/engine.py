@@ -11,6 +11,15 @@ PITCH_LENGTH_M = 105.0
 PITCH_WIDTH_M = 68.0
 
 
+def insight_priority_weight(priority: str) -> float:
+    mapping = {
+        "high": 1.0,
+        "medium": 0.7,
+        "low": 0.45,
+    }
+    return mapping.get(priority.lower(), 0.5)
+
+
 def _distance_m(start: Event, end: Event) -> float:
     if not start.position or not end.end_position:
         return 0.0
@@ -342,12 +351,82 @@ def detect_player_speed_burst(match_state: MatchState, events: list[Event], exis
     return candidate_insights[0][0]
 
 
+def detect_turning_point(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> Insight | None:
+    if len(events) < 10:
+        return None
+
+    end_ms = events[-1].match_clock_ms
+    current_start = max(0, end_ms - 20_000)
+    previous_start = max(0, current_start - 20_000)
+
+    current_window = [e for e in events if current_start <= e.match_clock_ms <= end_ms]
+    previous_window = [e for e in events if previous_start <= e.match_clock_ms < current_start]
+    if len(previous_window) < 4:
+        return None
+
+    current_teams = {e.team_id for e in current_window if e.team_id}
+    previous_teams = {e.team_id for e in previous_window if e.team_id}
+    if len(current_teams) < 2 and len(previous_teams) < 2:
+        return None
+
+    previous_possession = previous_window[-1].team_id
+    current_possession = current_window[-1].team_id
+    possession_swung = previous_possession != current_possession
+
+    previous_progressive = sum(
+        1 for e in previous_window if e.type in {"pass_completed", "carry"} and bool(e.qualifiers.get("progressive"))
+    )
+    current_progressive = sum(
+        1 for e in current_window if e.type in {"pass_completed", "carry"} and bool(e.qualifiers.get("progressive"))
+    )
+
+    rhythm_spike = len(current_window) >= len(previous_window) + 3
+    threat_spike = current_progressive >= previous_progressive + 2
+    if not ((possession_swung and rhythm_spike) or threat_spike):
+        return None
+
+    if any(
+        i.type == "turning_point" and abs(i.window_end_ms - end_ms) <= 25_000
+        for i in existing_insights
+    ):
+        return None
+
+    dominant_team = current_possession or current_window[-1].team_id
+    current_supporting = [e.event_id for e in current_window]
+    previous_supporting = [e.event_id for e in previous_window]
+    evidence = [
+        EvidenceItem(metric="current_window_events", value=len(current_window), unit="count", supporting_event_ids=current_supporting),
+        EvidenceItem(metric="previous_window_events", value=len(previous_window), unit="count", supporting_event_ids=previous_supporting),
+        EvidenceItem(metric="current_progressive_actions", value=current_progressive, unit="count", supporting_event_ids=current_supporting),
+        EvidenceItem(metric="previous_progressive_actions", value=previous_progressive, unit="count", supporting_event_ids=previous_supporting),
+    ]
+
+    reason = "control_to_chaos" if possession_swung else "tempo_escalation"
+    return Insight(
+        match_id=match_state.match_id,
+        type="turning_point",
+        priority="high",
+        confidence=0.84,
+        team_id=dominant_team,
+        window_start_ms=current_start,
+        window_end_ms=end_ms,
+        title="Turning Point",
+        summary=(
+            "Match state has flipped into a high-impact phase with a clear shift in control and tempo."
+            if reason == "control_to_chaos"
+            else "Match tempo has escalated sharply, creating a decisive moment in game rhythm."
+        ),
+        evidence=evidence,
+    )
+
+
 def detect_insights(match_state: MatchState, events: list[Event], existing_insights: list[Insight]) -> list[Insight]:
     candidates = [
         detect_sustained_pressure(match_state, events, existing_insights),
         detect_rhythm_shift(match_state, events, existing_insights),
         detect_player_influence(match_state, events, existing_insights),
         detect_player_speed_burst(match_state, events, existing_insights),
+        detect_turning_point(match_state, events, existing_insights),
     ]
     return [c for c in candidates if c is not None]
 

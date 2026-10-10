@@ -9,11 +9,20 @@
     · typedRoutes
 
  ✓ Starting...
- ✓ Ready in 16.3s
+ ✓ Ready in 17.7s
  ○ Compiling / ...
- ✓ Compiled / in 4.3s (527 modules)
- GET / 200 in 7300ms
+ ✓ Compiled / in 18.4s (527 modules)
+ GET / 200 in 290ms
+ GET / 200 in 86ms
+ GET / 200 in 1049ms
  ○ Compiling /_not-found ...
- ✓ Compiled /_not-found in 3.6s (530 modules)
- GET /.well-known/appspecific/com.chrome.devtools.json 404 in 4212ms
- GET /.well-known/appspecific/com.chrome.devtools.json 404 in 215ms
+ ✓ Compiled /_not-found in 13.6s (530 modules)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 21146ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 686ms
+ GET / 200 in 1292ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 270ms
+ GET / 200 in 7259ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 372ms
+ GET / 200 in 1339ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 935ms
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 597ms
