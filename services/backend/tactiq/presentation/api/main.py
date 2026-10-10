@@ -1,21 +1,33 @@
 from __future__ import annotations
 
 import os
-from urllib.error import URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import requests
 from starlette.concurrency import run_in_threadpool
 
 from tactiq.application.service import service
 from tactiq.simulator.scenarios import list_scenarios
 
 
-MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("VIDEO_UPLOAD_MAX_BYTES", str(200 * 1024 * 1024)))
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+MAX_VIDEO_UPLOAD_BYTES = _env_int("VIDEO_UPLOAD_MAX_BYTES", 200 * 1024 * 1024)
+MAX_VIDEO_REDIRECTS = _env_int("TACTIQ_VIDEO_MAX_REDIRECTS", 4)
 
 
 def _cors_allow_origins() -> list[str]:
@@ -26,7 +38,7 @@ def _cors_allow_origins() -> list[str]:
 
 app = FastAPI(title="Match Intelligence API", version="0.1.0")
 
-app.mount("/media", StaticFiles(directory=str(service.media_root)), name="media")
+app.mount("/media", StaticFiles(directory=str(service.clips_root)), name="media")
 
 app.add_middleware(
     CORSMiddleware,
@@ -103,27 +115,75 @@ async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
 
 
 def _download_video_link_bounded(url: str, max_bytes: int) -> bytes:
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 tactiq-video-fetch",
-            "Accept": "video/*,*/*;q=0.8",
-        },
-    )
+    def _ensure_public_target(target_url: str) -> None:
+        parsed = urlparse(target_url)
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("Video URL must be http(s)")
 
-    with urlopen(request, timeout=20) as response:  # noqa: S310
-        content_type = (response.headers.get("Content-Type") or "").lower()
-        if content_type and not content_type.startswith("video/") and "octet-stream" not in content_type:
-            raise ValueError(f"URL did not return a video content type ({content_type})")
+        hostname = (parsed.hostname or "").strip().lower()
+        if not hostname:
+            raise ValueError("Video URL host is missing")
+        if hostname in {"localhost"} or hostname.endswith(".localhost"):
+            raise ValueError("Private/loopback targets are not allowed")
 
-        data = bytearray()
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            data.extend(chunk)
-            if len(data) > max_bytes:
-                raise ValueError(f"Video exceeds upload limit of {max_bytes} bytes")
+        try:
+            candidate_ips = {
+                ipaddress.ip_address(hostname)
+            } if _looks_like_ip(hostname) else {
+                ipaddress.ip_address(entry[4][0])
+                for entry in socket.getaddrinfo(hostname, None)
+            }
+        except (ValueError, socket.gaierror):
+            raise ValueError("Unable to resolve video URL host")
+
+        for ip in candidate_ips:
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                raise ValueError("Private/loopback targets are not allowed")
+
+    def _looks_like_ip(value: str) -> bool:
+        try:
+            ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            return False
+
+    current_url = url
+    data = bytearray()
+    for _ in range(MAX_VIDEO_REDIRECTS + 1):
+        _ensure_public_target(current_url)
+        response = requests.get(
+            current_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 tactiq-video-fetch",
+                "Accept": "video/*,*/*;q=0.8",
+            },
+            stream=True,
+            allow_redirects=False,
+            timeout=20,
+        )
+        try:
+            if 300 <= response.status_code < 400 and response.headers.get("Location"):
+                current_url = urljoin(current_url, response.headers["Location"])
+                continue
+
+            if response.status_code >= 400:
+                raise ValueError(f"Video URL returned HTTP {response.status_code}")
+
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if content_type and not content_type.startswith("video/") and "octet-stream" not in content_type:
+                raise ValueError(f"URL did not return a video content type ({content_type})")
+
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                data.extend(chunk)
+                if len(data) > max_bytes:
+                    raise ValueError(f"Video exceeds upload limit of {max_bytes} bytes")
+            break
+        finally:
+            response.close()
+    else:
+        raise ValueError("Too many redirects while downloading video URL")
 
     if not data:
         raise ValueError("Downloaded video is empty")
@@ -245,14 +305,10 @@ def create_from_video_link(payload: VideoLinkRequest) -> dict:
             source_name=source_name,
             use_auto_eventing=True,
         )
-    except (ValueError, URLError):
-        # Compatibility fallback for sites that are not directly downloadable
-        # (for example YouTube pages without media extraction in this backend).
-        return service.create_match_from_video(
-            video_bytes=source.encode("utf-8"),
-            source_name=source,
-            use_auto_eventing=False,
-        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=400, detail=f"Unable to fetch video URL: {exc}") from exc
 
 
 @app.post("/api/v1/matches/{match_id}/narratives")

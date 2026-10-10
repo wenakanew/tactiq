@@ -37,8 +37,6 @@ region = os.environ.get("AZURE_SPEECH_REGION", "")
 
 if not language or not voice or not speech_text:
     raise RuntimeError("TACTIQ_PROBE_LANGUAGE, TACTIQ_PROBE_VOICE, and TACTIQ_PROBE_TEXT must be set")
-if not region:
-    raise RuntimeError("AZURE_SPEECH_REGION must be set")
 
 ssml = (
     f"<speak version='1.0' xml:lang='{language}' xmlns='http://www.w3.org/2001/10/synthesis'>"
@@ -47,11 +45,12 @@ ssml = (
 )
 headers = {
     "Ocp-Apim-Subscription-Key": os.environ["AZURE_SPEECH_API_KEY"],
-    "Ocp-Apim-Subscription-Region": region,
     "Content-Type": "application/ssml+xml",
     "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
     "User-Agent": "tactiq",
 }
+if region:
+    headers["Ocp-Apim-Subscription-Region"] = region
 
 resp = requests.post(
     _speech_rest_url(),

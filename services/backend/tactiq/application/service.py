@@ -26,6 +26,26 @@ from tactiq.video.extractor import extract_events_from_video_auto, extract_event
 
 
 class MatchService:
+    @staticmethod
+    def _env_int(name: str, default: int) -> int:
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+
+    @staticmethod
+    def _env_float(name: str, default: float) -> float:
+        raw = (os.getenv(name) or "").strip()
+        if not raw:
+            return default
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
     def __init__(self) -> None:
         self.matches: dict[str, MatchState] = {}
         self.events: dict[str, list[Event]] = defaultdict(list)
@@ -36,14 +56,14 @@ class MatchService:
         self.commentary_audit_log: dict[str, list[dict[str, Any]]] = defaultdict(list)
         self.commentary_audit_max_entries = 100
         self.commentary_memory: dict[str, list[str]] = defaultdict(list)
-        self.commentary_memory_max = int(os.getenv("COMMENTARY_MEMORY_MAX_LINES", "24"))
-        self.overlay_queue_limit = int(os.getenv("OVERLAY_QUEUE_LIMIT", "3"))
-        self.narrative_min_confidence = float(os.getenv("NARRATIVE_MIN_CONFIDENCE", "0.6"))
-        self.narrative_min_evidence_items = int(os.getenv("NARRATIVE_MIN_EVIDENCE_ITEMS", "2"))
-        self.clip_pre_roll_ms = int(os.getenv("TACTIQ_CLIP_PRE_ROLL_MS", "6000"))
-        self.clip_post_roll_ms = int(os.getenv("TACTIQ_CLIP_POST_ROLL_MS", "4000"))
-        self.clip_max_per_match = int(os.getenv("TACTIQ_CLIP_MAX_PER_MATCH", "5"))
-        self.clip_min_confidence = float(os.getenv("TACTIQ_CLIP_MIN_CONFIDENCE", "0.7"))
+        self.commentary_memory_max = self._env_int("COMMENTARY_MEMORY_MAX_LINES", 24)
+        self.overlay_queue_limit = self._env_int("OVERLAY_QUEUE_LIMIT", 3)
+        self.narrative_min_confidence = self._env_float("NARRATIVE_MIN_CONFIDENCE", 0.6)
+        self.narrative_min_evidence_items = self._env_int("NARRATIVE_MIN_EVIDENCE_ITEMS", 2)
+        self.clip_pre_roll_ms = self._env_int("TACTIQ_CLIP_PRE_ROLL_MS", 6000)
+        self.clip_post_roll_ms = self._env_int("TACTIQ_CLIP_POST_ROLL_MS", 4000)
+        self.clip_max_per_match = self._env_int("TACTIQ_CLIP_MAX_PER_MATCH", 5)
+        self.clip_min_confidence = self._env_float("TACTIQ_CLIP_MIN_CONFIDENCE", 0.7)
         media_root_env = os.getenv("TACTIQ_MEDIA_DIR", "").strip()
         default_media_root = Path(__file__).resolve().parents[3] / ".tactiq_media"
         self.media_root = Path(media_root_env) if media_root_env else default_media_root
@@ -203,7 +223,7 @@ class MatchService:
                 "error": str(exc)[:240],
             }
 
-        relative = os.path.join("clips", match_id, clip_name)
+        relative = os.path.join(match_id, clip_name)
         return {
             "status": "ready",
             "url": self._to_media_url(relative),
@@ -508,7 +528,7 @@ class MatchService:
 
         fails_guardrail, reason = self._fails_quality_guardrail(target)
         if fails_guardrail:
-            return DualCommentaryResult(
+            result = DualCommentaryResult(
                 primary_text="This phase needs more evidence before we call it decisively.",
                 secondary_text="Agreed. We'll stay grounded and update once the pattern is validated.",
                 language=language,
@@ -521,6 +541,21 @@ class MatchService:
                     "agents": [],
                 },
             )
+            entry = {
+                "call_id": f"commentary_{uuid4().hex[:12]}",
+                "timestamp_utc": datetime.now(tz=timezone.utc).isoformat(),
+                "match_id": match_id,
+                "insight_id": target.insight_id,
+                "language": language,
+                "provider": result.provider,
+                "fallback_used": result.fallback_used,
+                "primary_text": result.primary_text,
+                "secondary_text": result.secondary_text,
+                "audit": result.audit or {},
+            }
+            self.commentary_audit_log[match_id].append(entry)
+            self.commentary_audit_log[match_id] = self.commentary_audit_log[match_id][-self.commentary_audit_max_entries :]
+            return result
 
         result = self.narrative_generator.generate_dual_commentary(
             insight=target,

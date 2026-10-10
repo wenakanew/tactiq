@@ -832,6 +832,21 @@ export default function HomePage() {
     return insight?.clip?.status === "ready" && Boolean(insight.clip.url);
   }
 
+  function mergedEvidenceMetrics(insight: Insight): Array<{ metric: string; value: number | string; unit?: string }> {
+    const merged = new Map<string, { metric: string; value: number | string; unit?: string }>();
+    for (const item of insight.evidence ?? []) {
+      if (!merged.has(item.metric)) {
+        merged.set(item.metric, { metric: item.metric, value: item.value });
+      }
+    }
+    for (const metric of insight.provenance?.metrics ?? []) {
+      if (!merged.has(metric.metric)) {
+        merged.set(metric.metric, { metric: metric.metric, value: metric.value, unit: metric.unit });
+      }
+    }
+    return Array.from(merged.values());
+  }
+
   const turningPoints = insights.filter((i) => i.type === "turning_point").length;
   const heroInsight = latestInsight;
   const heroTier = heroInsight ? confidenceTier(heroInsight.confidence) : "mid";
@@ -841,7 +856,8 @@ export default function HomePage() {
   const statusMeta = liveStatusMeta(status);
   const StatusIcon = statusMeta.icon;
   const prefersReducedMotion = useReducedMotion();
-  const isConnecting = status === "creating" || status === "starting";
+  const isConnecting = status.includes("creating") || status.includes("starting");
+  const motionEnabled = !prefersReducedMotion;
 
   // ---- PitchVision-inspired derived data (all grounded in real insights) ----
   const avgConfidence =
@@ -1013,7 +1029,7 @@ export default function HomePage() {
                 r="9"
                 fill={dotIsTurning ? "var(--accent)" : "var(--primary)"}
                 animate={{ cx: (dotX / 100) * 388 + 6 }}
-                transition={{ type: "spring", stiffness: 90, damping: 16 }}
+                transition={motionEnabled ? { type: "spring", stiffness: 90, damping: 16 } : { duration: 0 }}
               />
               {audienceMode === "player" && heroInsight ? (
                 <motion.circle
@@ -1026,7 +1042,7 @@ export default function HomePage() {
                   strokeDasharray="4 3"
                   animate={prefersReducedMotion ? {} : { rotate: 360 }}
                   style={{ transformOrigin: `${(dotX / 100) * 388 + 6}px 130px` }}
-                  transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+                  transition={motionEnabled ? { duration: 6, repeat: Infinity, ease: "linear" } : { duration: 0 }}
                 />
               ) : null}
             </svg>
@@ -1043,10 +1059,10 @@ export default function HomePage() {
             {heroInsight ? (
               <motion.div
                 key={heroInsight.insight_id ?? heroInsight.title}
-                initial={{ opacity: 0, y: 10 }}
+                initial={motionEnabled ? { opacity: 0, y: 10 } : false}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.28, ease: "easeOut" }}
+                exit={motionEnabled ? { opacity: 0, y: -6 } : { opacity: 1 }}
+                transition={motionEnabled ? { duration: 0.28, ease: "easeOut" } : { duration: 0 }}
               >
                 <div className="insight-hero-top">
                   <span className="insight-eyebrow">
@@ -1063,9 +1079,9 @@ export default function HomePage() {
                   <div className="confidence-track">
                     <motion.span
                       className={`confidence-fill confidence-fill--${heroTier}`}
-                      initial={{ width: 0 }}
+                      initial={motionEnabled ? { width: 0 } : false}
                       animate={{ width: `${Math.round(heroInsight.confidence * 100)}%` }}
-                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      transition={motionEnabled ? { duration: 0.5, ease: "easeOut" } : { duration: 0 }}
                     />
                   </div>
                   <span className="confidence-label">{Math.round(heroInsight.confidence * 100)}% confidence</span>
@@ -1088,9 +1104,9 @@ export default function HomePage() {
               <motion.div
                 key="empty"
                 className="empty-hero"
-                initial={{ opacity: 0 }}
+                initial={motionEnabled ? { opacity: 0 } : false}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                exit={motionEnabled ? { opacity: 0 } : { opacity: 1 }}
               >
                 {isConnecting ? (
                   <>
@@ -1189,9 +1205,9 @@ export default function HomePage() {
                     <span className="breakdown-track">
                       <motion.span
                         className="breakdown-fill"
-                        initial={{ width: 0 }}
+                        initial={motionEnabled ? { width: 0 } : false}
                         animate={{ width: `${(count / maxTypeCount) * 100}%` }}
-                        transition={{ duration: 0.4, ease: "easeOut" }}
+                        transition={motionEnabled ? { duration: 0.4, ease: "easeOut" } : { duration: 0 }}
                       />
                     </span>
                     <span className="breakdown-count">{count}</span>
@@ -1318,9 +1334,9 @@ export default function HomePage() {
                 <motion.div
                   key={insight.insight_id ?? `${insight.title}-${index}`}
                   className={`timeline-item${major ? " timeline-item--major" : ""}`}
-                  initial={{ opacity: 0, x: -8 }}
+                  initial={motionEnabled ? { opacity: 0, x: -8 } : false}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.03 }}
+                  transition={motionEnabled ? { duration: 0.25, delay: Math.min(index, 6) * 0.03 } : { duration: 0 }}
                 >
                   <span className="timeline-time">
                     <ItemIcon size={13} aria-hidden="true" /> {formatMs(insight.provenance?.window?.end_ms)}
@@ -1468,14 +1484,8 @@ export default function HomePage() {
               <div className="evidence-block">
                 <h3>Supporting metrics</h3>
                 <div className="evidence-grid">
-                  {heroInsight.evidence.map((item) => (
-                    <div className="evidence-cell" key={item.metric}>
-                      <span className="metric">{item.metric}</span>
-                      <span className="value">{item.value}</span>
-                    </div>
-                  ))}
-                  {(heroInsight.provenance?.metrics ?? []).map((metric) => (
-                    <div className="evidence-cell" key={`prov-${metric.metric}`}>
+                  {mergedEvidenceMetrics(heroInsight).map((metric) => (
+                    <div className="evidence-cell" key={`metric-${metric.metric}`}>
                       <span className="metric">{metric.metric}</span>
                       <span className="value">
                         {metric.value}

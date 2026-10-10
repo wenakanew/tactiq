@@ -38,18 +38,17 @@ if not language:
     raise RuntimeError("TACTIQ_PROBE_LANGUAGE must be set")
 if not voices_raw.strip():
     raise RuntimeError("TACTIQ_PROBE_VOICE_LIST must be set (comma separated)")
-if not region:
-    raise RuntimeError("AZURE_SPEECH_REGION must be set")
 
 voices = [item.strip() for item in voices_raw.split(",") if item.strip()]
 
 headers = {
     "Ocp-Apim-Subscription-Key": os.environ["AZURE_SPEECH_API_KEY"],
-    "Ocp-Apim-Subscription-Region": region,
     "Content-Type": "application/ssml+xml",
     "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
     "User-Agent": "tactiq",
 }
+if region:
+    headers["Ocp-Apim-Subscription-Region"] = region
 
 for voice in voices:
     ssml = (

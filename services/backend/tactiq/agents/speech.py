@@ -42,7 +42,7 @@ class AzureSpeechSynthesizer:
         )
 
     def is_configured(self) -> bool:
-        return bool(self._endpoint and self._key)
+        return bool(self._key and (self._endpoint or self._region))
 
     def synthesize(
         self,
@@ -86,7 +86,12 @@ class AzureSpeechSynthesizer:
         if not self.is_configured():
             raise RuntimeError("Azure Speech is not configured")
 
-        voice_a, voice_b = self._commentator_pair_for(language)
+        if primary_voice and secondary_voice:
+            voice_a, voice_b = primary_voice, secondary_voice
+        else:
+            default_a, default_b = self._commentator_pair_for(language)
+            voice_a = primary_voice or default_a
+            voice_b = secondary_voice or default_b
 
         primary_result = self.synthesize(
             text=primary_text,
@@ -204,7 +209,9 @@ class AzureSpeechSynthesizer:
 
         normalized = endpoint.strip()
         if not normalized:
-            raise RuntimeError("Azure Speech endpoint is not configured")
+            if urls:
+                return list(dict.fromkeys(urls))
+            raise RuntimeError("Azure Speech endpoint or region is not configured")
 
         if "cognitiveservices/v1" in normalized:
             urls.append(normalized)

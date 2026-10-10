@@ -392,12 +392,13 @@ def detect_turning_point(match_state: MatchState, events: list[Event], existing_
         return None
 
     dominant_team = current_possession or current_window[-1].team_id
-    supporting = [e.event_id for e in current_window]
+    current_supporting = [e.event_id for e in current_window]
+    previous_supporting = [e.event_id for e in previous_window]
     evidence = [
-        EvidenceItem(metric="current_window_events", value=len(current_window), unit="count", supporting_event_ids=supporting),
-        EvidenceItem(metric="previous_window_events", value=len(previous_window), unit="count", supporting_event_ids=supporting),
-        EvidenceItem(metric="current_progressive_actions", value=current_progressive, unit="count", supporting_event_ids=supporting),
-        EvidenceItem(metric="previous_progressive_actions", value=previous_progressive, unit="count", supporting_event_ids=supporting),
+        EvidenceItem(metric="current_window_events", value=len(current_window), unit="count", supporting_event_ids=current_supporting),
+        EvidenceItem(metric="previous_window_events", value=len(previous_window), unit="count", supporting_event_ids=previous_supporting),
+        EvidenceItem(metric="current_progressive_actions", value=current_progressive, unit="count", supporting_event_ids=current_supporting),
+        EvidenceItem(metric="previous_progressive_actions", value=previous_progressive, unit="count", supporting_event_ids=previous_supporting),
     ]
 
     reason = "control_to_chaos" if possession_swung else "tempo_escalation"
