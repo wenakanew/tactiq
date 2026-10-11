@@ -42,14 +42,19 @@ Then call:
 
 Optional voice overrides (two male commentator defaults):
 
-- `AZURE_SPEECH_COMMENTATOR_A_VOICE` (default `en-GB-RyanNeural`)
-- `AZURE_SPEECH_COMMENTATOR_B_VOICE` (default `en-GB-ThomasNeural`)
+- `AZURE_SPEECH_COMMENTATOR_A_VOICE`
+- `AZURE_SPEECH_COMMENTATOR_B_VOICE`
+- `AZURE_SPEECH_DEFAULT_VOICE`
+- `AZURE_SPEECH_DEFAULT_VOICE_BY_LANGUAGE_JSON`
+- `AZURE_SPEECH_DEFAULT_COMMENTATOR_A_VOICE`
+- `AZURE_SPEECH_DEFAULT_COMMENTATOR_B_VOICE`
+- `AZURE_SPEECH_DEFAULT_COMMENTATOR_PAIR_BY_LANGUAGE_JSON`
 
 Optional Foundry commentary profile tuning:
 
-- `FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME` (default `commentary-playbyplay`)
-- `FOUNDRY_COMMENTARY_COLOR_AGENT_NAME` (default `commentary-color`)
-- `FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION` (default `v1`)
+- `FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME`
+- `FOUNDRY_COMMENTARY_COLOR_AGENT_NAME`
+- `FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION`
 - `FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE` (role guidance string)
 - `FOUNDRY_COMMENTARY_COLOR_PROFILE` (role guidance string)
 
@@ -75,7 +80,7 @@ The UI now supports live commentary plus optional dual-commentary mode.
 3. Run:
    - `npm run dev`
 
-The frontend expects the backend at `http://localhost:8000` by default.
+Set `NEXT_PUBLIC_API_BASE_URL` for the frontend to reach the backend.
 
 > Note: `npm install` reported 3 vulnerabilities in transitive packages from the default Next.js stack. For this first slice, functionality was prioritized; hardening is scheduled for later phases.
 
@@ -88,7 +93,7 @@ The frontend expects the backend at `http://localhost:8000` by default.
    ```
 
 2. `POST /api/v1/matches/{match_id}/start`
-3. Connect to `ws://localhost:8000/api/v1/ws/matches/{match_id}`
+3. Connect to `{NEXT_PUBLIC_API_BASE_URL with ws scheme}/api/v1/ws/matches/{match_id}`
 4. Open `GET /api/v1/matches/{match_id}/insights` to verify evidence-backed insight.
 5. Optional: call `GET /api/v1/scenarios` and run:
    - `sustained_pressure`

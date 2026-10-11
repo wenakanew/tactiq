@@ -41,9 +41,10 @@ def test_generate_recap_returns_top_insights() -> None:
         _insight(match_id, "Player Influence Rising", 0.84),
     ]
 
-    recap, top = service.generate_recap(match_id=match_id, audience_mode="analyst", language="en-GB")
+    recap, top, chapters = service.generate_recap(match_id=match_id, audience_mode="analyst", language="en-GB")
 
     assert "Post-Match" in recap.title
     assert recap.provider in {"foundry", "deterministic"}
     assert len(top) == 3
+    assert len(chapters) == 3
     assert top[0].title == "Momentum Shift"

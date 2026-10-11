@@ -148,42 +148,25 @@ class FoundryNarrativeGenerator:
 
     def __init__(self, fallback: NarrativeGenerator) -> None:
         self._fallback = fallback
-        self._foundry_enabled = os.getenv("FOUNDRY_ENABLED", "false").lower() == "true"
+        self._foundry_enabled = self._env_bool("FOUNDRY_ENABLED")
         self._endpoint = os.getenv("AZURE_FOUNDRY_PROJECT_ENDPOINT")
         self._deployment = os.getenv("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME")
         self._api_key = os.getenv("AZURE_FOUNDRY_API_KEY")
-        self._commentary_playbyplay_agent_name = os.getenv(
-            "FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME",
-            "commentary-playbyplay",
-        )
-        self._commentary_color_agent_name = os.getenv(
-            "FOUNDRY_COMMENTARY_COLOR_AGENT_NAME",
-            "commentary-color",
-        )
-        self._commentary_tuning_version = os.getenv(
-            "FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION",
-            "v1",
-        )
-        self._commentary_playbyplay_profile = os.getenv(
-            "FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE",
-            (
-                "Play-by-play profile: lead male broadcaster voice, rapid visual callouts, "
-                "short clauses, urgency spikes on chances, and natural football idioms."
-            ),
-        )
-        self._commentary_color_profile = os.getenv(
-            "FOUNDRY_COMMENTARY_COLOR_PROFILE",
-            (
-                "Color profile: second male analyst voice, tactical context, explain shape changes, "
-                "support the lead call with concise insight and natural interjections."
-            ),
-        )
-        self._use_direct_commentary_agents = os.getenv(
-            "FOUNDRY_COMMENTARY_USE_DIRECT_AGENTS",
-            "true",
-        ).lower() in {"1", "true", "yes", "on"}
+        self._commentary_playbyplay_agent_name = os.getenv("FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME")
+        self._commentary_color_agent_name = os.getenv("FOUNDRY_COMMENTARY_COLOR_AGENT_NAME")
+        self._commentary_tuning_version = os.getenv("FOUNDRY_COMMENTARY_PROMPT_TUNING_VERSION")
+        self._commentary_playbyplay_profile = os.getenv("FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE")
+        self._commentary_color_profile = os.getenv("FOUNDRY_COMMENTARY_COLOR_PROFILE")
+        self._use_direct_commentary_agents = self._env_bool("FOUNDRY_COMMENTARY_USE_DIRECT_AGENTS")
         self._project_client: Any | None = None
         self._agents_client: Any | None = None
+
+    @staticmethod
+    def _env_bool(name: str) -> bool:
+        value = os.getenv(name)
+        if value is None:
+            return False
+        return value.strip().lower() in {"1", "true", "yes", "on"}
 
     def generate(
         self,
@@ -298,13 +281,13 @@ class FoundryNarrativeGenerator:
                             "name": self._commentary_playbyplay_agent_name,
                             "version": self._commentary_tuning_version,
                             "source": "prompt-profile",
-                            "instructions": self._commentary_playbyplay_profile,
+                            "instructions": self._commentary_playbyplay_profile or "",
                         },
                         {
                             "name": self._commentary_color_agent_name,
                             "version": self._commentary_tuning_version,
                             "source": "prompt-profile",
-                            "instructions": self._commentary_color_profile,
+                            "instructions": self._commentary_color_profile or "",
                         },
                     ],
                     "tuning_version": self._commentary_tuning_version,
@@ -409,33 +392,57 @@ class FoundryNarrativeGenerator:
 
     def _resolve_commentary_agent_instructions(
         self,
-        agent_name: str,
-        fallback_profile: str,
+        agent_name: str | None,
+        fallback_profile: str | None,
     ) -> CommentaryAgentResolution | None:
+        normalized_name = (agent_name or "").strip()
+        if not normalized_name:
+            return None
+
         try:
             client = self._ensure_agents_client()
-            versions = list(client.agents.list_versions(agent_name=agent_name, limit=1))
+            versions = list(client.agents.list_versions(agent_name=normalized_name, limit=1))
             if versions:
-                definition = getattr(versions[0], "definition", None)
+                latest = versions[0]
+                instructions = ""
+
+                definition = getattr(latest, "definition", None)
                 if isinstance(definition, dict):
                     instructions = str(definition.get("instructions", "")).strip()
-                    if instructions:
-                        version_name = getattr(versions[0], "name", None)
-                        return CommentaryAgentResolution(
-                            name=agent_name,
-                            instructions=instructions,
-                            version=str(version_name) if version_name is not None else None,
-                            source="foundry-agent-version",
-                        )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Unable to fetch Foundry agent instructions for %s: %s", agent_name, exc)
+                elif definition is not None:
+                    dict_like = getattr(definition, "as_dict", None)
+                    if callable(dict_like):
+                        mapped = dict_like()
+                        if isinstance(mapped, dict):
+                            instructions = str(mapped.get("instructions", "")).strip()
+                    if not instructions:
+                        instructions = str(getattr(definition, "instructions", "")).strip()
 
-        fallback = fallback_profile.strip()
+                if not instructions:
+                    instructions = str(getattr(latest, "instructions", "")).strip()
+
+                if instructions:
+                    revision = (
+                        getattr(latest, "version", None)
+                        or getattr(latest, "revision", None)
+                        or getattr(latest, "id", None)
+                        or getattr(latest, "name", None)
+                    )
+                    return CommentaryAgentResolution(
+                        name=normalized_name,
+                        instructions=instructions,
+                        version=str(revision) if revision is not None else None,
+                        source="foundry-agent-version",
+                    )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Unable to fetch Foundry agent instructions for %s: %s", normalized_name, exc)
+
+        fallback = (fallback_profile or "").strip()
         if not fallback:
             return None
 
         return CommentaryAgentResolution(
-            name=agent_name,
+            name=normalized_name,
             instructions=fallback,
             version=self._commentary_tuning_version,
             source="env-fallback-profile",
@@ -484,8 +491,8 @@ class FoundryNarrativeGenerator:
                 "playbyplay_agent_name": self._commentary_playbyplay_agent_name,
                 "color_agent_name": self._commentary_color_agent_name,
                 "tuning_version": self._commentary_tuning_version,
-                "playbyplay_profile": self._commentary_playbyplay_profile,
-                "color_profile": self._commentary_color_profile,
+                "playbyplay_profile": self._commentary_playbyplay_profile or "",
+                "color_profile": self._commentary_color_profile or "",
             },
         }
 

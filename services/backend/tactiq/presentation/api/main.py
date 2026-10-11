@@ -1,26 +1,48 @@
 from __future__ import annotations
 
 import os
+import ipaddress
+import socket
+from urllib.parse import urljoin, urlparse
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import requests
 from starlette.concurrency import run_in_threadpool
 
 from tactiq.application.service import service
 from tactiq.simulator.scenarios import list_scenarios
 
 
-MAX_VIDEO_UPLOAD_BYTES = int(os.getenv("VIDEO_UPLOAD_MAX_BYTES", str(200 * 1024 * 1024)))
+def _env_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+MAX_VIDEO_UPLOAD_BYTES = _env_int("VIDEO_UPLOAD_MAX_BYTES", 200 * 1024 * 1024)
+MAX_VIDEO_REDIRECTS = _env_int("TACTIQ_VIDEO_MAX_REDIRECTS", 4)
+
+
+def _cors_allow_origins() -> list[str]:
+    raw = (os.getenv("TACTIQ_CORS_ALLOW_ORIGINS") or "").strip()
+    if not raw:
+        return []
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 app = FastAPI(title="Match Intelligence API", version="0.1.0")
 
+app.mount("/media", StaticFiles(directory=str(service.clips_root)), name="media")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +114,83 @@ async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
     return bytes(collected)
 
 
+def _download_video_link_bounded(url: str, max_bytes: int) -> bytes:
+    def _ensure_public_target(target_url: str) -> None:
+        parsed = urlparse(target_url)
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("Video URL must be http(s)")
+
+        hostname = (parsed.hostname or "").strip().lower()
+        if not hostname:
+            raise ValueError("Video URL host is missing")
+        if hostname in {"localhost"} or hostname.endswith(".localhost"):
+            raise ValueError("Private/loopback targets are not allowed")
+
+        try:
+            candidate_ips = {
+                ipaddress.ip_address(hostname)
+            } if _looks_like_ip(hostname) else {
+                ipaddress.ip_address(entry[4][0])
+                for entry in socket.getaddrinfo(hostname, None)
+            }
+        except (ValueError, socket.gaierror):
+            raise ValueError("Unable to resolve video URL host")
+
+        for ip in candidate_ips:
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                raise ValueError("Private/loopback targets are not allowed")
+
+    def _looks_like_ip(value: str) -> bool:
+        try:
+            ipaddress.ip_address(value)
+            return True
+        except ValueError:
+            return False
+
+    current_url = url
+    data = bytearray()
+    for _ in range(MAX_VIDEO_REDIRECTS + 1):
+        _ensure_public_target(current_url)
+        response = requests.get(
+            current_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 tactiq-video-fetch",
+                "Accept": "video/*,*/*;q=0.8",
+            },
+            stream=True,
+            allow_redirects=False,
+            timeout=20,
+        )
+        try:
+            if 300 <= response.status_code < 400 and response.headers.get("Location"):
+                current_url = urljoin(current_url, response.headers["Location"])
+                continue
+
+            if response.status_code >= 400:
+                raise ValueError(f"Video URL returned HTTP {response.status_code}")
+
+            content_type = (response.headers.get("Content-Type") or "").lower()
+            if content_type and not content_type.startswith("video/") and "octet-stream" not in content_type:
+                raise ValueError(f"URL did not return a video content type ({content_type})")
+
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                data.extend(chunk)
+                if len(data) > max_bytes:
+                    raise ValueError(f"Video exceeds upload limit of {max_bytes} bytes")
+            break
+        finally:
+            response.close()
+    else:
+        raise ValueError("Too many redirects while downloading video URL")
+
+    if not data:
+        raise ValueError("Downloaded video is empty")
+
+    return bytes(data)
+
+
 @app.get("/health/live")
 def live() -> dict[str, str]:
     return {"status": "ok"}
@@ -142,7 +241,7 @@ def get_events(match_id: str) -> list[dict]:
 def get_insights(match_id: str) -> list[dict]:
     if match_id not in service.matches:
         raise HTTPException(status_code=404, detail="Match not found")
-    return [i.model_dump() for i in service.get_insights(match_id)]
+    return service.get_serialized_insights(match_id)
 
 
 @app.post("/api/v1/matches/{match_id}/viewer-profile")
@@ -193,14 +292,23 @@ def create_from_video_link(payload: VideoLinkRequest) -> dict:
     if not payload.url.strip():
         raise HTTPException(status_code=400, detail="Video URL is required")
 
-    # Stub path: avoid external fetching in hackathon baseline.
-    # Deterministically seed extraction from URL bytes so pipeline can be tested end-to-end.
     source = payload.url.strip()
-    return service.create_match_from_video(
-        video_bytes=source.encode("utf-8"),
-        source_name=source,
-        use_auto_eventing=False,
-    )
+    parsed = urlparse(source)
+    if parsed.scheme not in {"http", "https"}:
+        raise HTTPException(status_code=400, detail="Video URL must be http(s)")
+
+    try:
+        content = _download_video_link_bounded(source, MAX_VIDEO_UPLOAD_BYTES)
+        source_name = os.path.basename(parsed.path) or "linked_video.mp4"
+        return service.create_match_from_video(
+            video_bytes=content,
+            source_name=source_name,
+            use_auto_eventing=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=400, detail=f"Unable to fetch video URL: {exc}") from exc
 
 
 @app.post("/api/v1/matches/{match_id}/narratives")
@@ -232,7 +340,7 @@ def generate_recap(match_id: str, payload: RecapRequest) -> dict:
     if match_id not in service.matches:
         raise HTTPException(status_code=404, detail="Match not found")
     try:
-        recap, top_insights = service.generate_recap(
+        recap, top_insights, chapters = service.generate_recap(
             match_id=match_id,
             audience_mode=payload.audience_mode,
             language=payload.language,
@@ -257,6 +365,7 @@ def generate_recap(match_id: str, payload: RecapRequest) -> dict:
             }
             for insight in top_insights
         ],
+        "chapters": chapters,
     }
 
 

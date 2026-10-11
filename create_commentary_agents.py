@@ -5,27 +5,48 @@ from azure.ai.projects import AIProjectClient
 from azure.identity import DefaultAzureCredential
 
 root = Path(__file__).resolve().parent
-for line in (root / ".env").read_text(encoding="utf-8").splitlines():
-    line = line.strip()
-    if line and not line.startswith("#") and "=" in line:
-        k, v = line.split("=", 1)
-        os.environ[k.strip()] = v.strip()
+
+
+def _load_dotenv_if_present(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+
+_load_dotenv_if_present(root / ".env")
 
 client = AIProjectClient(
     endpoint=os.environ["AZURE_FOUNDRY_PROJECT_ENDPOINT"],
     credential=DefaultAzureCredential(),
 )
 
-model = os.environ.get("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME", "gpt-5.6-sol")
+model = os.environ.get("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME")
+playbyplay_agent_name = os.environ.get("FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME")
+color_agent_name = os.environ.get("FOUNDRY_COMMENTARY_COLOR_AGENT_NAME")
+playbyplay_profile = os.environ.get("FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE")
+color_profile = os.environ.get("FOUNDRY_COMMENTARY_COLOR_PROFILE")
+description = os.environ.get("FOUNDRY_COMMENTARY_AGENT_DESCRIPTION") or ""
+
+if not model:
+    raise RuntimeError("AZURE_FOUNDRY_PROJECT_DEPLOYMENT_NAME must be set")
+
+if not playbyplay_agent_name or not color_agent_name:
+    raise RuntimeError(
+        "FOUNDRY_COMMENTARY_PLAYBYPLAY_AGENT_NAME and FOUNDRY_COMMENTARY_COLOR_AGENT_NAME must be set",
+    )
+
+if not playbyplay_profile or not color_profile:
+    raise RuntimeError(
+        "FOUNDRY_COMMENTARY_PLAYBYPLAY_PROFILE and FOUNDRY_COMMENTARY_COLOR_PROFILE must be set",
+    )
+
 agent_specs = [
-    (
-        "commentary-playbyplay",
-        "You are the Play-by-Play commentator for football broadcasts. Output exactly one short natural line (8-22 words), urgent visual call, no invented stats, no markdown.",
-    ),
-    (
-        "commentary-color",
-        "You are the Color commentator for football broadcasts. Output exactly one short natural line (8-22 words), tactical context, supportive tone, no invented stats, no markdown.",
-    ),
+    (playbyplay_agent_name, playbyplay_profile),
+    (color_agent_name, color_profile),
 ]
 
 for name, instructions in agent_specs:
@@ -37,7 +58,7 @@ for name, instructions in agent_specs:
                 "model": model,
                 "instructions": instructions,
             },
-            description="Tactiq dual-commentary agent",
+            description=description,
             draft=False,
         )
         print("created_or_updated", name, "version", getattr(version, "version", None))
@@ -46,6 +67,4 @@ for name, instructions in agent_specs:
 
 print("--- commentary agents in project ---")
 for agent in client.agents.list(limit=50):
-    name = getattr(agent, "name", None)
-    if name and "commentary" in name:
-        print(name)
+    print(getattr(agent, "name", None))
