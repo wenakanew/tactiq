@@ -52,6 +52,41 @@ type Insight = {
   };
 };
 
+type MatchStatePayload = {
+  match_id: string;
+  status?: string;
+  score?: Record<string, number>;
+  possession_team_id?: string | null;
+  last_sequence?: number;
+  team_display_names?: Record<string, string>;
+  cv_live?: {
+    ball_position?: { x?: number; y?: number };
+    raw_ball_position?: { x?: number; y?: number };
+    smoothed_ball_position?: { x?: number; y?: number };
+    ball_speed_kmh?: number;
+    ball_travel_direction?: string;
+    top_player_speed_kmh?: number;
+    tracked_players?: number;
+    team_identification_confidence?: number;
+    possession_team_id?: string;
+    possession_transition_confidence?: number;
+    control_index_by_team?: Record<string, number>;
+    control_delta?: number;
+    controlling_team_id?: string;
+    pitch_zone?: string;
+    tracking_source?: string;
+    updated_at_ms?: number;
+  };
+};
+
+type EventPayload = {
+  team_id?: string;
+  type?: string;
+  position?: { x?: number; y?: number };
+  end_position?: { x?: number; y?: number };
+  qualifiers?: Record<string, unknown>;
+};
+
 type RecapChapter = {
   chapter_id: string;
   title: string;
@@ -75,6 +110,7 @@ type VideoIngestionResponse = {
   event_count: number;
   insight_count: number;
   clips_generated?: number;
+  state?: MatchStatePayload;
   insights: Insight[];
 };
 
@@ -259,6 +295,8 @@ export default function HomePage() {
   const [matchId, setMatchId] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [eventsCount, setEventsCount] = useState<number>(0);
+  const [liveState, setLiveState] = useState<MatchStatePayload | null>(null);
+  const [latestEvent, setLatestEvent] = useState<EventPayload | null>(null);
   const [latestInsight, setLatestInsight] = useState<Insight | null>(null);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [audienceMode, setAudienceMode] = useState<string>("fan");
@@ -360,6 +398,8 @@ export default function HomePage() {
     setInsights([]);
     setLatestInsight(null);
     setEventsCount(0);
+    setLiveState(null);
+    setLatestEvent(null);
     setNarrative("");
     setNarrativeMeta("");
     setRecap("");
@@ -370,26 +410,44 @@ export default function HomePage() {
     setCommentaryAuditStatus("idle");
     auditRequestSequenceRef.current += 1;
 
-    if (scenarios.length === 0) {
-      const available = (await fetch(`${API_BASE}/api/v1/scenarios`).then((res) => res.json())) as Scenario[];
-      setScenarios(available);
+    try {
+      if (scenarios.length === 0) {
+        const scenariosResponse = await fetch(`${API_BASE}/api/v1/scenarios`);
+        if (!scenariosResponse.ok) {
+          setStatus(`scenarios unavailable (${scenariosResponse.status})`);
+          return;
+        }
+        const available = (await scenariosResponse.json()) as Scenario[];
+        setScenarios(available);
+      }
+
+      const createResponse = await fetch(`${API_BASE}/api/v1/matches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scenario_id: selectedScenario, seed: 42001 }),
+      });
+      if (!createResponse.ok) {
+        setStatus(`match creation failed (${createResponse.status})`);
+        return;
+      }
+      const created = (await createResponse.json()) as { match_id: string };
+
+      setMatchId(created.match_id);
+      activeMatchRef.current = created.match_id;
+      setStatus("starting match...");
+
+      const startResponse = await fetch(`${API_BASE}/api/v1/matches/${created.match_id}/start`, {
+        method: "POST",
+      });
+      if (!startResponse.ok) {
+        setStatus(`match start failed (${startResponse.status})`);
+        return;
+      }
+
+      connectWs(created.match_id);
+    } catch {
+      setStatus("backend unavailable (check API URL/CORS)");
     }
-
-    const created = await fetch(`${API_BASE}/api/v1/matches`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scenario_id: selectedScenario, seed: 42001 }),
-    }).then((res) => res.json());
-
-    setMatchId(created.match_id);
-    activeMatchRef.current = created.match_id;
-    setStatus("starting match...");
-
-    await fetch(`${API_BASE}/api/v1/matches/${created.match_id}/start`, {
-      method: "POST",
-    });
-
-    connectWs(created.match_id);
   }
 
   function applyVideoSummary(payload: VideoIngestionResponse) {
@@ -397,6 +455,8 @@ export default function HomePage() {
     setMatchId(payload.match_id);
     setStatus("completed");
     setEventsCount(payload.event_count);
+    setLiveState(payload.state ?? null);
+    setLatestEvent(null);
     setInsights(payload.insights ?? []);
     setLatestInsight(payload.insights?.length ? payload.insights[payload.insights.length - 1] : null);
     setNarrative("");
@@ -738,8 +798,23 @@ export default function HomePage() {
     ws.onmessage = (event) => {
       const message = JSON.parse(event.data) as { type: string; payload?: any };
 
+      if (message.type === "match.snapshot" && message.payload) {
+        const snapshot = message.payload as MatchStatePayload;
+        setLiveState(snapshot);
+        if (typeof snapshot.last_sequence === "number") {
+          setEventsCount(snapshot.last_sequence);
+        }
+      }
+
       if (message.type === "event.created") {
+        if (message.payload) {
+          setLatestEvent(message.payload as EventPayload);
+        }
         setEventsCount((count) => count + 1);
+      }
+
+      if (message.type === "state.updated" && message.payload) {
+        setLiveState(message.payload as MatchStatePayload);
       }
 
       if (message.type === "insight.created" && message.payload) {
@@ -847,10 +922,37 @@ export default function HomePage() {
     return Array.from(merged.values());
   }
 
+  const teamNames = {
+    team_a: liveState?.team_display_names?.team_a ?? "Team A",
+    team_b: liveState?.team_display_names?.team_b ?? "Team B",
+  };
+
+  function teamLabel(teamId?: string | null): string {
+    if (!teamId) return "Unknown";
+    if (teamId === "team_a") return teamNames.team_a;
+    if (teamId === "team_b") return teamNames.team_b;
+    return teamId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
   const turningPoints = insights.filter((i) => i.type === "turning_point").length;
   const heroInsight = latestInsight;
   const heroTier = heroInsight ? confidenceTier(heroInsight.confidence) : "mid";
   const dotX = momentumX(heroInsight);
+  const liveCv = liveState?.cv_live;
+  const ballX = liveCv?.ball_position?.x ?? latestEvent?.end_position?.x ?? latestEvent?.position?.x ?? dotX;
+  const ballY = liveCv?.ball_position?.y ?? latestEvent?.end_position?.y ?? latestEvent?.position?.y ?? 50;
+  const possessionTeamId = liveState?.possession_team_id ?? liveCv?.possession_team_id ?? null;
+  const trackedPlayers = liveCv?.tracked_players ?? 0;
+  const ballSpeed = liveCv?.ball_speed_kmh;
+  const ballDirection = liveCv?.ball_travel_direction;
+  const topPlayerSpeed = liveCv?.top_player_speed_kmh;
+  const teamIdConfidence = liveCv?.team_identification_confidence;
+  const possessionTransitionConfidence = liveCv?.possession_transition_confidence;
+  const controlA = liveCv?.control_index_by_team?.team_a;
+  const controlB = liveCv?.control_index_by_team?.team_b;
+  const controlDelta = liveCv?.control_delta;
+  const controlLeader = liveCv?.controlling_team_id;
+  const pitchZone = liveCv?.pitch_zone;
   const dotIsTurning = heroInsight?.type === "turning_point";
   const HeroIcon = insightIcon(heroInsight);
   const statusMeta = liveStatusMeta(status);
@@ -960,16 +1062,16 @@ export default function HomePage() {
         <div className="scoreboard">
           <div className="team-block">
             <div className="team-badge team-badge--a" aria-hidden="true">A</div>
-            <span className="team-name">Team A</span>
+            <span className="team-name">{teamNames.team_a}</span>
           </div>
           <div className="score-block">
-            <span className="score-value">{eventsCount > 0 ? "0" : "–"}</span>
+            <span className="score-value">{eventsCount > 0 ? String(liveState?.score?.team_a ?? 0) : "–"}</span>
             <span className="score-sep">:</span>
-            <span className="score-value">{eventsCount > 0 ? "0" : "–"}</span>
+            <span className="score-value">{eventsCount > 0 ? String(liveState?.score?.team_b ?? 0) : "–"}</span>
           </div>
           <div className="team-block team-block--away">
             <div className="team-badge team-badge--b" aria-hidden="true">B</div>
-            <span className="team-name">Team B</span>
+            <span className="team-name">{teamNames.team_b}</span>
           </div>
         </div>
         <div className="match-meta">
@@ -990,7 +1092,7 @@ export default function HomePage() {
             <CircleDot size={13} aria-hidden="true" /> Live momentum
           </span>
           <div className="pitch-svg-wrap">
-            <svg viewBox="0 0 400 260" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Abstract pitch showing momentum direction">
+            <svg viewBox="0 0 400 260" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Pitch showing tracked live momentum and ball position">
               <defs>
                 <radialGradient id="pressureGlow" cx="50%" cy="50%" r="60%">
                   <stop offset="0%" stopColor={dotIsTurning ? "var(--accent)" : "var(--primary)"} stopOpacity="0.35" />
@@ -1008,13 +1110,13 @@ export default function HomePage() {
               <rect x="6" y="80" width="46" height="100" fill="none" stroke="var(--pitch-line)" strokeWidth="2" />
               <rect x="348" y="80" width="46" height="100" fill="none" stroke="var(--pitch-line)" strokeWidth="2" />
               {heroInsight ? (
-                <circle cx={(dotX / 100) * 388 + 6} cy={130} r="60" fill="url(#pressureGlow)" />
+                <circle cx={(ballX / 100) * 388 + 6} cy={(ballY / 100) * 248 + 6} r="60" fill="url(#pressureGlow)" />
               ) : null}
               {!prefersReducedMotion && heroInsight ? (
                 <motion.circle
                   key={`ripple-${heroInsight.insight_id ?? heroInsight.title}`}
-                  cx={(dotX / 100) * 388 + 6}
-                  cy={130}
+                  cx={(ballX / 100) * 388 + 6}
+                  cy={(ballY / 100) * 248 + 6}
                   fill="none"
                   stroke={dotIsTurning ? "var(--accent)" : "var(--primary)"}
                   strokeWidth="2"
@@ -1025,31 +1127,61 @@ export default function HomePage() {
               ) : null}
               <motion.circle
                 className="pitch-momentum-dot"
-                cy={130}
+                cy={(ballY / 100) * 248 + 6}
                 r="9"
                 fill={dotIsTurning ? "var(--accent)" : "var(--primary)"}
-                animate={{ cx: (dotX / 100) * 388 + 6 }}
+                animate={{ cx: (ballX / 100) * 388 + 6 }}
                 transition={motionEnabled ? { type: "spring", stiffness: 90, damping: 16 } : { duration: 0 }}
               />
+              {trackedPlayers > 0
+                ? Array.from({ length: Math.min(10, Math.max(4, Math.floor(trackedPlayers / 2))) }).map((_, idx) => {
+                    const orbitX = (idx % 5) * 11 - 22;
+                    const orbitY = Math.floor(idx / 5) * 16 - 8;
+                    return (
+                      <circle
+                        key={`marker-${idx}`}
+                        className="pitch-player-marker"
+                        cx={(ballX / 100) * 388 + 6 + orbitX}
+                        cy={(ballY / 100) * 248 + 6 + orbitY}
+                        r="3"
+                        fill={idx % 2 === 0 ? "var(--team-a)" : "var(--team-b)"}
+                        opacity="0.86"
+                      />
+                    );
+                  })
+                : null}
               {audienceMode === "player" && heroInsight ? (
                 <motion.circle
-                  cx={(dotX / 100) * 388 + 6}
-                  cy={130}
+                  cx={(ballX / 100) * 388 + 6}
+                  cy={(ballY / 100) * 248 + 6}
                   r="16"
                   fill="none"
                   stroke="var(--focus)"
                   strokeWidth="2"
                   strokeDasharray="4 3"
                   animate={prefersReducedMotion ? {} : { rotate: 360 }}
-                  style={{ transformOrigin: `${(dotX / 100) * 388 + 6}px 130px` }}
+                  style={{ transformOrigin: `${(ballX / 100) * 388 + 6}px ${(ballY / 100) * 248 + 6}px` }}
                   transition={motionEnabled ? { duration: 6, repeat: Infinity, ease: "linear" } : { duration: 0 }}
                 />
               ) : null}
             </svg>
           </div>
+          <div className="pitch-cv-strip">
+            <span><strong>Tracked</strong> {trackedPlayers || "—"} players</span>
+            <span><strong>Ball speed</strong> {typeof ballSpeed === "number" ? `${ballSpeed.toFixed(1)} km/h` : "—"}</span>
+            <span><strong>Top speed</strong> {typeof topPlayerSpeed === "number" ? `${topPlayerSpeed.toFixed(1)} km/h` : "—"}</span>
+            <span><strong>Possession</strong> {teamLabel(possessionTeamId)}</span>
+            <span><strong>Control</strong> {typeof controlA === "number" && typeof controlB === "number" ? `${teamNames.team_a} ${controlA.toFixed(1)} · ${teamNames.team_b} ${controlB.toFixed(1)}` : "—"}</span>
+            <span><strong>Delta</strong> {typeof controlDelta === "number" ? `${controlDelta > 0 ? "+" : ""}${controlDelta.toFixed(1)}` : "—"}</span>
+            <span><strong>Leader</strong> {controlLeader === "neutral" ? "Neutral" : teamLabel(controlLeader)}</span>
+            <span><strong>Zone</strong> {pitchZone ? pitchZone.replace(/_/g, " ") : "—"}</span>
+            <span><strong>Direction</strong> {ballDirection ? ballDirection.replace(/_/g, " ") : "—"}</span>
+            <span><strong>Possession conf</strong> {typeof possessionTransitionConfidence === "number" ? `${Math.round(possessionTransitionConfidence * 100)}%` : "—"}</span>
+            <span><strong>Team ID</strong> {typeof teamIdConfidence === "number" ? `${Math.round(teamIdConfidence * 100)}%` : "—"}</span>
+          </div>
           <div className="pitch-legend">
-            <span><i style={{ background: "var(--team-a)" }} /> Team A build-up</span>
-            <span><i style={{ background: "var(--team-b)" }} /> Team B build-up</span>
+            <span><i style={{ background: "var(--team-a)" }} /> {teamNames.team_a} build-up</span>
+            <span><i style={{ background: "var(--team-b)" }} /> {teamNames.team_b} build-up</span>
             <span><i style={{ background: "var(--accent)" }} /> Turning point</span>
           </div>
         </div>
@@ -1273,8 +1405,8 @@ export default function HomePage() {
                 Focus player
               </label>
               <select id="player-pick" value={selectedPlayer} onChange={(event) => setSelectedPlayer(event.target.value)}>
-                <option value="a_10">Team A — #10</option>
-                <option value="b_08">Team B — #8</option>
+                <option value="a_10">{teamNames.team_a} — #10</option>
+                <option value="b_08">{teamNames.team_b} — #8</option>
               </select>
             </div>
           </div>

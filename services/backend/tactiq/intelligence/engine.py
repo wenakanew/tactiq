@@ -36,6 +36,118 @@ def _event_distance_m(event: Event) -> float:
     return sqrt((dx * dx) + (dy * dy))
 
 
+def _estimate_ball_speed_kmh(event: Event) -> float:
+    if isinstance(event.qualifiers.get("ball_speed_kmh"), (int, float)):
+        return float(event.qualifiers["ball_speed_kmh"])
+    if isinstance(event.qualifiers.get("shot_speed_kmh"), (int, float)):
+        return float(event.qualifiers["shot_speed_kmh"])
+
+    distance_m = _event_distance_m(event)
+    travel_ms = float(event.qualifiers.get("travel_ms", 0) or 0)
+    if distance_m <= 0 or travel_ms <= 0:
+        return 0.0
+    return (distance_m / max(0.2, travel_ms / 1000.0)) * 3.6
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
+def _possession_transition_confidence(event: Event, all_events: list[Event]) -> float:
+    possession_types = {"recovery", "pass_completed", "carry", "shot", "turnover"}
+    lookback = [item for item in all_events[-10:] if item.type in possession_types]
+    if not lookback:
+        return 0.5
+
+    current_team = event.team_id
+    switches = 0
+    for idx in range(1, len(lookback)):
+        if lookback[idx].team_id != lookback[idx - 1].team_id:
+            switches += 1
+
+    streak = 0
+    for item in reversed(lookback):
+        if item.team_id == current_team:
+            streak += 1
+        else:
+            break
+
+    type_bonus = 0.2 if event.type in {"recovery", "turnover"} else 0.08
+    streak_score = min(1.0, streak / 3.0) * 0.34
+    volatility_penalty = min(0.42, switches * 0.09)
+    pressure_penalty = 0.07 if bool(event.qualifiers.get("pressured")) else 0.0
+
+    confidence = 0.42 + type_bonus + streak_score - volatility_penalty - pressure_penalty
+    return _clamp(confidence, 0.05, 0.99)
+
+
+def _derive_cv_live(match_state: MatchState, event: Event, all_events: list[Event]) -> dict[str, float | int | str | dict]:
+    point = event.end_position or event.position
+    x = float(point.x) if point else 50.0
+    y = float(point.y) if point else 50.0
+    tracked_players = int(event.qualifiers.get("tracked_players", 22 if event.synthetic else 18))
+    tracked_players = max(0, min(30, tracked_players))
+
+    prev_smoothed = match_state.cv_live.get("smoothed_ball_position") if isinstance(match_state.cv_live, dict) else None
+    prev_x = float(prev_smoothed.get("x")) if isinstance(prev_smoothed, dict) and isinstance(prev_smoothed.get("x"), (int, float)) else x
+    prev_y = float(prev_smoothed.get("y")) if isinstance(prev_smoothed, dict) and isinstance(prev_smoothed.get("y"), (int, float)) else y
+    alpha = 0.36
+    smoothed_x = _clamp((alpha * x) + ((1.0 - alpha) * prev_x), 0.0, 100.0)
+    smoothed_y = _clamp((alpha * y) + ((1.0 - alpha) * prev_y), 0.0, 100.0)
+
+    delta_x = smoothed_x - prev_x
+    travel_direction = "static"
+    if delta_x > 0.75:
+        travel_direction = "left_to_right"
+    elif delta_x < -0.75:
+        travel_direction = "right_to_left"
+
+    speed_leader = 0.0
+    control_index_by_team: dict[str, float] = {}
+    for team_id, metrics in (match_state.metrics_by_team or {}).items():
+        top_speed = float(metrics.get("top_player_speed_kmh", 0.0) or 0.0)
+        speed_leader = max(speed_leader, top_speed)
+        control_index = (
+            float(metrics.get("progressive_actions", 0.0) or 0.0) * 0.55
+            + float(metrics.get("final_third_entries", 0.0) or 0.0) * 1.35
+            + float(metrics.get("shots", 0.0) or 0.0) * 1.8
+        )
+        control_index_by_team[team_id] = round(control_index, 2)
+
+    team_a_control = float(control_index_by_team.get("team_a", 0.0))
+    team_b_control = float(control_index_by_team.get("team_b", 0.0))
+    control_delta = round(team_a_control - team_b_control, 2)
+    controlling_team_id = "team_a" if control_delta > 0 else "team_b" if control_delta < 0 else "neutral"
+
+    pitch_zone = "midfield"
+    if x >= 66.67:
+        pitch_zone = "final_third_team_b"
+    elif x <= 33.33:
+        pitch_zone = "final_third_team_a"
+
+    return {
+        "raw_ball_position": {"x": round(x, 2), "y": round(y, 2)},
+        "smoothed_ball_position": {"x": round(smoothed_x, 2), "y": round(smoothed_y, 2)},
+        "ball_position": {"x": round(smoothed_x, 2), "y": round(smoothed_y, 2)},
+        "ball_speed_kmh": round(_estimate_ball_speed_kmh(event), 1),
+        "ball_travel_direction": travel_direction,
+        "top_player_speed_kmh": round(speed_leader, 1),
+        "tracked_players": tracked_players,
+        "team_identification_confidence": round(
+            float(event.qualifiers.get("team_identification_confidence", 0.92 if event.synthetic else 0.78)),
+            2,
+        ),
+        "possession_team_id": event.team_id,
+        "possession_transition_confidence": round(_possession_transition_confidence(event, all_events), 2),
+        "control_index_by_team": control_index_by_team,
+        "control_delta": control_delta,
+        "controlling_team_id": controlling_team_id,
+        "pitch_zone": pitch_zone,
+        "tracking_source": "event_stream_v1",
+        "updated_at_ms": event.match_clock_ms,
+    }
+
+
 def _difficulty_rating(event: Event, distance_m: float) -> float:
     explicit = event.qualifiers.get("pass_difficulty")
     if isinstance(explicit, (int, float)):
@@ -449,5 +561,6 @@ def reduce_match_state(match_state: MatchState, event: Event, all_events: list[E
         team: compute_snapshot(match_state.match_id, team_events, team).metrics
         for team, team_events in grouped.items()
     }
+    match_state.cv_live = _derive_cv_live(match_state, event, all_events)
 
     return match_state
