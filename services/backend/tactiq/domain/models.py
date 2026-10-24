@@ -77,4 +77,6 @@ class MatchState(BaseModel):
     score: dict[str, int] = Field(default_factory=lambda: {"team_a": 0, "team_b": 0})
     possession_team_id: str | None = None
     last_sequence: int = 0
+    team_display_names: dict[str, str] = Field(default_factory=lambda: {"team_a": "Team A", "team_b": "Team B"})
     metrics_by_team: dict[str, dict[str, float | int]] = Field(default_factory=dict)
+    cv_live: dict[str, Any] = Field(default_factory=dict)

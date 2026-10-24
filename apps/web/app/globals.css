@@ -477,6 +477,27 @@ code {
   display: inline-block;
 }
 
+.pitch-cv-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.34);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.pitch-cv-strip strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.pitch-player-marker {
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.35));
+}
+
 /* ---- Insight hero card ---- */
 
 .insight-hero {
@@ -1584,5 +1605,8 @@ details[open] summary {
   }
   .breakdown-row {
     grid-template-columns: 92px 1fr 30px;
+  }
+  .pitch-cv-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

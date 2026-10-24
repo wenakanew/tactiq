@@ -138,3 +138,7 @@ This currently includes deterministic insights, three core detectors, and a narr
       - Automatically falls back to deterministic stub extraction if runtime/video quality is insufficient.
    - `POST /api/v1/video/from-link` (URL string; deterministic stub extraction)
    - Both paths normalize events into the same `Event` schema and run the current intelligence pipeline.
+- CV ingest foundation endpoint:
+   - `POST /api/v1/cv/ingest/upload` (multipart video file)
+   - Returns sampled frame tracks (`player`/`ball`) with per-track IDs, team hints, pitch-mapped positions,
+     broadcast calibration metadata, and occlusion-recovery inferred ball points.

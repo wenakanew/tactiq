@@ -46,6 +46,11 @@ class MatchService:
         except ValueError:
             return default
 
+    @staticmethod
+    def _env_text(name: str, default: str) -> str:
+        raw = (os.getenv(name) or "").strip()
+        return raw or default
+
     def __init__(self) -> None:
         self.matches: dict[str, MatchState] = {}
         self.events: dict[str, list[Event]] = defaultdict(list)
@@ -60,6 +65,10 @@ class MatchService:
         self.overlay_queue_limit = self._env_int("OVERLAY_QUEUE_LIMIT", 3)
         self.narrative_min_confidence = self._env_float("NARRATIVE_MIN_CONFIDENCE", 0.6)
         self.narrative_min_evidence_items = self._env_int("NARRATIVE_MIN_EVIDENCE_ITEMS", 2)
+        self.team_display_names = {
+            "team_a": self._env_text("TACTIQ_TEAM_A_NAME", "Team A"),
+            "team_b": self._env_text("TACTIQ_TEAM_B_NAME", "Team B"),
+        }
         self.clip_pre_roll_ms = self._env_int("TACTIQ_CLIP_PRE_ROLL_MS", 6000)
         self.clip_post_roll_ms = self._env_int("TACTIQ_CLIP_POST_ROLL_MS", 4000)
         self.clip_max_per_match = self._env_int("TACTIQ_CLIP_MAX_PER_MATCH", 5)
@@ -389,7 +398,12 @@ class MatchService:
 
     def create_match(self, scenario_id: str, seed: int) -> MatchState:
         match_id = f"match_{uuid4().hex[:8]}"
-        state = MatchState(match_id=match_id, scenario_id=scenario_id, seed=seed)
+        state = MatchState(
+            match_id=match_id,
+            scenario_id=scenario_id,
+            seed=seed,
+            team_display_names=dict(self.team_display_names),
+        )
         self.matches[match_id] = state
         return state
 
@@ -618,8 +632,10 @@ class MatchService:
             "clock_ms": state.match_clock_ms,
             "status": state.status.value,
             "score": state.score,
+            "team_display_names": state.team_display_names,
             "possession_team_id": state.possession_team_id,
             "metrics_by_team": state.metrics_by_team,
+            "cv_live": state.cv_live,
             "current_insight": (
                 {
                     **top["insight"],

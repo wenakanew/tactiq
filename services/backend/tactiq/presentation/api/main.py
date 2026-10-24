@@ -13,6 +13,7 @@ import requests
 from starlette.concurrency import run_in_threadpool
 
 from tactiq.application.service import service
+from tactiq.cv.ingest import extract_cv_tracks_from_video_bytes
 from tactiq.simulator.scenarios import list_scenarios
 
 
@@ -32,9 +33,13 @@ MAX_VIDEO_REDIRECTS = _env_int("TACTIQ_VIDEO_MAX_REDIRECTS", 4)
 
 def _cors_allow_origins() -> list[str]:
     raw = (os.getenv("TACTIQ_CORS_ALLOW_ORIGINS") or "").strip()
-    if not raw:
-        return []
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    defaults = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    configured = [origin.strip() for origin in raw.split(",") if origin.strip()] if raw else []
+    combined: list[str] = []
+    for origin in [*configured, *defaults]:
+        if origin not in combined:
+            combined.append(origin)
+    return combined
 
 app = FastAPI(title="Match Intelligence API", version="0.1.0")
 
@@ -309,6 +314,38 @@ def create_from_video_link(payload: VideoLinkRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except requests.RequestException as exc:
         raise HTTPException(status_code=400, detail=f"Unable to fetch video URL: {exc}") from exc
+
+
+@app.post("/api/v1/cv/ingest/upload")
+async def upload_video_for_cv_ingest(
+    file: UploadFile = File(...),
+    source_name: str | None = Form(default=None),
+    max_tracks: int = Query(default=1200, ge=100, le=10000),
+) -> dict:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Video filename is required")
+
+    content = await _read_upload_bounded(file, MAX_VIDEO_UPLOAD_BYTES)
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded video is empty")
+
+    effective_source = source_name or file.filename
+    try:
+        result = await run_in_threadpool(
+            extract_cv_tracks_from_video_bytes,
+            content,
+            effective_source,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    payload = result.model_dump()
+    total_tracks = len(payload["tracks"])
+    payload["tracks"] = payload["tracks"][:max_tracks]
+    payload["tracks_truncated"] = total_tracks > max_tracks
+    payload["track_count_total"] = total_tracks
+    payload["track_count_returned"] = len(payload["tracks"])
+    return payload
 
 
 @app.post("/api/v1/matches/{match_id}/narratives")
