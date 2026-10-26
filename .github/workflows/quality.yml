@@ -1,0 +1,170 @@
+name: Quality and readiness
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      readiness_report:
+        description: Reviewed production-readiness JSON report in this repository
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    env:
+      FOUNDRY_ENABLED: "false"
+      APP_ENV: local
+      TACTIQ_AUTH_ENABLED: "false"
+      TACTIQ_MEDIA_DIR: .test-media
+      TACTIQ_AUDIT_REPORT_PATH: endpoint-matrix.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r requirements.lock
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check services/backend/tactiq tests
+      - run: python -m bandit -r services/backend/tactiq -ll -q
+      - run: python -m pytest -q --junitxml=quality-results.xml
+      - run: python -m tactiq.evaluation smoke --output quality-smoke.json
+      - run: python -m pip_audit -r requirements.lock --strict
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-quality-${{ matrix.python }}
+          path: |
+            quality-results.xml
+            quality-smoke.json
+            endpoint-matrix.json
+
+  cloud-contracts:
+    runs-on: ubuntu-latest
+    services:
+      blob:
+        image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+        env:
+          AZURITE_ACCOUNTS: tactiqci:Y2ktb25seS1ibG9iLWtleS1ub3QtZm9yLXByb2R1Y3Rpb24=
+        ports:
+          - 127.0.0.1:11000:10000
+        options: >-
+          --health-cmd "node -e \"require('net').connect(10000,'127.0.0.1').on('connect',function(){this.end();process.exit(0)}).on('error',()=>process.exit(1))\""
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: tactiq_ci
+          POSTGRES_USER: tactiq_ci
+          POSTGRES_PASSWORD: ephemeral-ci-only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tactiq_ci -d tactiq_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FOUNDRY_ENABLED: "false"
+      TACTIQ_ALLOW_POSTGRES_TEST_WRITES: "1"
+      TACTIQ_TEST_POSTGRES_DSN: postgresql://tactiq_ci:ephemeral-ci-only@127.0.0.1:5432/tactiq_ci
+      TACTIQ_ALLOW_BLOB_EMULATOR_WRITES: "1"
+      TACTIQ_TEST_BLOB_ACCOUNT_URL: http://127.0.0.1:11000/tactiqci
+      TACTIQ_TEST_BLOB_ACCOUNT_NAME: tactiqci
+      TACTIQ_TEST_BLOB_ACCOUNT_KEY: Y2ktb25seS1ibG9iLWtleS1ub3QtZm9yLXByb2R1Y3Rpb24=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install -r requirements.lock
+      - run: python -m pip install -e ".[dev]"
+      - name: Verify disposable PostgreSQL and SDK contracts
+        run: >-
+          python -m pytest -q
+          tests/integration
+          tests/unit/test_cloud_postgres.py
+          tests/unit/test_cloud_blob.py
+          tests/unit/test_cloud_worker.py
+          tests/unit/test_access_foundation.py
+          tests/unit/test_identity_foundation.py
+          tests/unit/test_agent_framework_workflow.py
+          --junitxml=cloud-contract-results.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloud-contract-results
+          path: cloud-contract-results.xml
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+      - run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r requirements.lock && python -m pip install --no-deps .
+        working-directory: .
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: apps/web/test-results
+
+  production-readiness:
+    if: github.event_name == 'workflow_dispatch' && inputs.readiness_report != ''
+    needs: [backend, cloud-contracts, frontend]
+    runs-on: ubuntu-latest
+    env:
+      REVIEWED_REPORT: ${{ inputs.readiness_report }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -r requirements.lock && python -m pip install --no-deps .
+      - name: Enforce measured release gates
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          root = Path.cwd().resolve()
+          report = (root / os.environ["REVIEWED_REPORT"]).resolve()
+          if not report.is_relative_to(root) or report.suffix != ".json":
+              raise SystemExit("The reviewed report must be a JSON file inside the repository")
+          subprocess.run([sys.executable, "-m", "tactiq.evaluation", "gate", "--report", str(report)], check=True)

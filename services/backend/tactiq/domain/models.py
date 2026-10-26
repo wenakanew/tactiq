@@ -12,6 +12,7 @@ class MatchStatus(str, Enum):
     RUNNING = "running"
     PAUSED = "paused"
     COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class Position(BaseModel):
@@ -60,6 +61,10 @@ class Insight(BaseModel):
     priority: str
     confidence: float = Field(ge=0.0, le=1.0)
     team_id: str
+    player_id: str | None = None
+    metric_version: str = "2.0.0"
+    model_version: str | None = None
+    context: dict[str, Any] = Field(default_factory=dict)
     window_start_ms: int
     window_end_ms: int
     title: str
@@ -67,16 +72,31 @@ class Insight(BaseModel):
     evidence: list[EvidenceItem]
 
 
+class PlayerIdentity(BaseModel):
+    player_id: str
+    team_id: str | None = None
+    display_name: str | None = None
+
+
 class MatchState(BaseModel):
     schema_version: str = "1.0.0"
     match_id: str
+    tenant_id: str = "local"
     scenario_id: str
+    scenario_recipe_version: int = Field(default=1, ge=1, le=2)
     seed: int
     status: MatchStatus = MatchStatus.CREATED
     match_clock_ms: int = 0
     score: dict[str, int] = Field(default_factory=lambda: {"team_a": 0, "team_b": 0})
     possession_team_id: str | None = None
     last_sequence: int = 0
+    action_count: int = 0
+    tracking_sample_count: int = 0
     team_display_names: dict[str, str] = Field(default_factory=lambda: {"team_a": "Team A", "team_b": "Team B"})
+    player_roster: dict[str, PlayerIdentity] = Field(default_factory=dict)
     metrics_by_team: dict[str, dict[str, float | int]] = Field(default_factory=dict)
     cv_live: dict[str, Any] = Field(default_factory=dict)
+    tactical_state: dict[str, Any] = Field(default_factory=dict)
+    analysis_metadata: dict[str, Any] = Field(default_factory=dict)
+    attack_directions: dict[str, int] = Field(default_factory=lambda: {"team_a": 1, "team_b": -1})
+    error: str | None = None

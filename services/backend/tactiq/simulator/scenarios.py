@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from random import Random
 from typing import Callable
+from uuid import NAMESPACE_URL, uuid5
 
 from tactiq.domain.models import Event, Position
+from tactiq.simulator.rich import RECIPE_VERSION, rich_actions, rich_timeline
 
 
 @dataclass(frozen=True)
@@ -128,11 +131,32 @@ SCENARIOS: dict[str, tuple[ScenarioConfig, Callable[[str], list[Event]]]] = {
 
 
 def list_scenarios() -> list[ScenarioConfig]:
-    return [item[0] for item in SCENARIOS.values()]
+    return [load_scenario(key, "catalog")[0] for key in SCENARIOS]
 
 
-def load_scenario(scenario_id: str, match_id: str) -> tuple[ScenarioConfig, list[Event]]:
+def load_scenario(scenario_id: str, match_id: str, seed: int = 42001, *, version: int = RECIPE_VERSION) -> tuple[ScenarioConfig, list[Event]]:
     if scenario_id not in SCENARIOS:
         raise ValueError(f"Unsupported scenario: {scenario_id}")
+    if version == RECIPE_VERSION:
+        events = rich_actions(scenario_id, match_id, seed)
+        return ScenarioConfig(scenario_id, events[-1].match_clock_ms + 500), events
+    if version != 1:
+        raise ValueError(f"Unsupported scenario recipe version: {version}")
     config, factory = SCENARIOS[scenario_id]
-    return config, factory(match_id)
+    events = factory(match_id)
+    random = Random(seed)
+    for event in events:
+        event.event_id = str(uuid5(NAMESPACE_URL, f"tactiq:{scenario_id}:{match_id}:{seed}:{event.sequence}"))
+        event.match_clock_ms += random.randrange(0, 250)
+        for point in (event.position, event.end_position):
+            if point:
+                point.y = max(0, min(100, point.y + random.uniform(-1.5, 1.5)))
+                if event.team_id == "team_b":
+                    point.x = 100 - point.x
+    return config, events
+
+
+def scenario_timeline(scenario_id: str, match_id: str, seed: int, version: int) -> list[Event]:
+    if version == RECIPE_VERSION:
+        return rich_timeline(scenario_id, match_id, seed)
+    return load_scenario(scenario_id, match_id, seed, version=version)[1]

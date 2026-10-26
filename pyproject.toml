@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "match-intelligence"
-version = "0.1.0"
-description = "Deterministic football intelligence vertical slice"
+version = "0.2.0"
+description = "Evidence-linked football intelligence, tracked replay, and grounded commentary"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0",
@@ -15,16 +15,36 @@ dependencies = [
   "requests>=2.32.0",
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0.84",
+  "scipy>=1.14.0,<2",
+  "anyio>=4.6.0,<5",
+  "yt-dlp[default]==2026.10.21",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.0",
+  "httpx>=0.27.0,<1",
+  "ruff>=0.12.0,<1",
+  "bandit>=1.8.0,<2",
+  "pip-audit>=2.9.0,<3",
+  "uv>=0.8.0,<1",
 ]
 foundry = [
+  "agent-framework-core==1.23.0",
+  "agent-framework-openai==1.17.0",
   "azure-ai-projects>=1.0.0b6",
   "azure-identity>=1.19.0",
   "azure-cognitiveservices-speech>=1.41.1",
+]
+azure = [
+  "psycopg[binary]>=3.2,<4",
+  "azure-storage-blob>=12.31,<13",
+  "azure-servicebus>=7.14,<8",
+  "azure-identity>=1.19,<2",
+]
+identity = [
+  "msal>=1.39,<2",
+  "PyJWT[crypto]>=2.10,<3",
 ]
 
 [tool.setuptools]
@@ -34,6 +54,12 @@ package-dir = {"" = "services/backend"}
 where = ["services/backend"]
 include = ["tactiq*"]
 
+[tool.setuptools.package-data]
+"tactiq.runtime" = ["migrations/*.sql"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["services/backend"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

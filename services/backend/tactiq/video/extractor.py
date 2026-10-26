@@ -6,6 +6,7 @@ import os
 import tempfile
 
 from tactiq.domain.models import Event, Position
+from tactiq.video.validation import validate_video_container
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ def extract_events_from_video_auto(content: bytes, match_id: str) -> VideoExtrac
     """
     if not content:
         raise ValueError("Empty video content")
+    validate_video_container(content)
 
     try:
         import cv2  # type: ignore[import-not-found]

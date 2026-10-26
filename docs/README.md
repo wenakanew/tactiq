@@ -1,0 +1,24 @@
+# Tactiq documentation
+
+[Product home](../README.md)
+
+**Start with the experience. Follow the evidence.**
+
+| Your goal | Read |
+| --- | --- |
+| Understand or demonstrate Tactiq | [User guide](product/user-guide.md) · [Demo guide](submission/demo-guide.md) |
+| Review how it works | [Architecture](architecture/overview.md) · [Agent workflow](architecture/agent-workflow.md) · [Decisions](architecture/decisions.md) |
+| Develop locally | [Getting started](development/getting-started.md) · [Testing](development/testing.md) |
+| Integrate or configure | [API](reference/api.md) · [Configuration](reference/configuration.md) |
+| Assess cloud readiness | [Deployment status](azure/deployment.md) · [Costs](azure/costs.md) |
+| Operate responsibly | [Runbook](operations/runbook.md) · [Privacy and security](operations/privacy-and-security.md) |
+| Review the submission | [Judging evidence map](submission/judging-guide.md) |
+| Check reuse rights | [License](../LICENSE) · [Third-party notices](reference/third-party-notices.md) |
+
+## Status vocabulary
+
+- **Implemented reference:** behavior supported by the current local application and regression contracts.
+- **Planned / in progress:** approved direction or partial work, not proof of integrated production behavior.
+- **Verified release:** requires dated, reproducible evidence against an identified release and deployment.
+
+Azure/Entra/Agent Framework target work is **planned / in progress**. No public cloud cutover is documented as complete. See the [release gates](azure/deployment.md#release-gates) before treating local results as deployment evidence.
