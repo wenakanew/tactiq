@@ -118,6 +118,8 @@ jobs:
         working-directory: apps/web
     env:
       NEXT_PUBLIC_API_BASE_URL: ""
+      TACTIQ_BACKEND_URL: http://127.0.0.1:18765
+      TACTIQ_E2E_PRODUCTION: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

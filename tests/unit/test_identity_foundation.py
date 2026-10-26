@@ -8,6 +8,7 @@ import secrets
 import shutil
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -33,6 +34,43 @@ def settings(**overrides):
         "client_id": CLIENT, "client_secret": "test-credential",
         "redirect_uri": "https://app.example/identity/callback", **overrides,
     })
+
+
+@pytest.fixture
+def certificate_credential():
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "offline-test")])
+    now = datetime.now(timezone.utc)
+    certificate = (
+        x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+        .serial_number(x509.random_serial_number()).not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1)).sign(key, hashes.SHA256())
+    )
+    pem = key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption(),
+    ) + certificate.public_bytes(serialization.Encoding.PEM)
+    return pem.decode("ascii"), certificate.fingerprint(hashes.SHA1()).hex()
+
+
+def test_certificate_credential_is_validated_and_never_in_settings_repr(certificate_credential):
+    pem, thumbprint = certificate_credential
+    configured = settings(client_secret="", certificate_pem=pem)
+    assert configured.client_credential() == {"private_key": pem, "thumbprint": thumbprint}
+    assert pem not in repr(configured) and "PRIVATE KEY" not in repr(configured)
+    with pytest.raises(ValueError, match="exactly one"):
+        settings(certificate_pem=pem)
+
+
+@pytest.mark.parametrize("pem", ["invalid", "-----BEGIN CERTIFICATE-----\ninvalid", "\u2603"])
+def test_invalid_certificate_is_rejected_without_exposing_input(pem):
+    with pytest.raises(ValueError, match="Invalid confidential-client certificate") as error:
+        settings(client_secret="", certificate_pem=pem)
+    assert str(error.value) == "Invalid confidential-client certificate"
 
 
 @pytest.fixture

@@ -11,9 +11,13 @@ from typing import Any, Protocol
 from tactiq.domain.models import Insight
 from tactiq.agents.grounding import Claim, GeneratedLine, GeneratedNarrative, validate_text
 from tactiq.agents.localization import language_copy, localized_insight
+from tactiq.agents.usage import record_model_usage
 from tactiq.agents.commentary import CommentaryTurn, GeneratedDialogue, GeneratedRole, deep_supported, deterministic_turns
 
 logger = logging.getLogger(__name__)
+NARRATIVE_SYSTEM_PROMPT = "Return strict JSON only."
+NARRATIVE_MAX_COMPLETION_TOKENS = 1600
+DUAL_COMMENTARY_TOKEN_BOUND = 2 * (64_000 + 1100 + 4096)
 
 
 @dataclass
@@ -255,8 +259,8 @@ class FoundryNarrativeGenerator:
     def _is_configured(self) -> bool:
         return bool(self._foundry_enabled and self._endpoint and self._deployment and time.monotonic() >= self._unavailable_until)
 
+    @staticmethod
     def _build_prompt(
-        self,
         insight: Insight,
         audience_mode: str,
         language: str,
@@ -297,11 +301,28 @@ class FoundryNarrativeGenerator:
             "Explicitly label synthetic input as simulated. An observation overview is not proof of passes, shots or tactics. "
             "Return strict JSON: title, body, claims, entities. "
             "Each numerical claim must include metric, value, and supporting_event_ids from the input. "
-            "List every referenced entity ID in entities. Avoid unsupported events or whole-match conclusions.\n\n"
+            "Claims have exactly those three keys; unit belongs to the input evidence, not a claim. "
+            "List only referenced supported team/player IDs in entities, never supporting event IDs. "
+            "Describe and qualify only this passage; do not discuss wider match periods, even in disclaimers. "
+            "Use supplied names only, with sentence-case titles and no invented proper names.\n\n"
             "For a supported in-depth explanation, use 120-180 words covering the passage, evidence, sequence and limits. "
             "For sparse evidence or broadcast depth, be shorter; never pad or invent details. "
+            f"OUTPUT_JSON_SCHEMA:\n{json.dumps(GeneratedNarrative.model_json_schema())}\n"
             f"INPUT_JSON:\n{json.dumps(payload, ensure_ascii=False)}"
         )
+
+    @staticmethod
+    def single_request_token_bound(
+        insight: Insight, audience_mode: str, language: str, selected_player_id: str | None,
+    ) -> int:
+        scoped = insight.model_copy(update={"context": {**insight.context, "language": language}})
+        prompt = FoundryNarrativeGenerator._build_prompt(scoped, audience_mode, language, selected_player_id)
+        size = len((prompt + NARRATIVE_SYSTEM_PROMPT).encode("utf-8"))
+        if size > 64_000:
+            raise ValueError("Metered narrative exceeds its input budget")
+        # At most one input token per UTF-8 byte, plus completion and a bounded
+        # tool-free chat envelope; no second role request exists on this path.
+        return size + NARRATIVE_MAX_COMPLETION_TOKENS + 4096
 
     def generate_dual_commentary(
         self,
@@ -731,8 +752,8 @@ class FoundryNarrativeGenerator:
     def _call_foundry(self, prompt: str) -> str:
         return self._call_foundry_with_system(
             user_prompt=prompt,
-            system_prompt="Return strict JSON only.",
-            max_completion_tokens=1600,
+            system_prompt=NARRATIVE_SYSTEM_PROMPT,
+            max_completion_tokens=NARRATIVE_MAX_COMPLETION_TOKENS,
         )
 
     def _call_foundry_with_system(self, user_prompt: str, system_prompt: str, max_completion_tokens: int) -> str:
@@ -746,7 +767,7 @@ class FoundryNarrativeGenerator:
 
         # Preferred path for current azure-ai-projects SDK versions.
         if hasattr(client, "get_openai_client"):
-            openai_kwargs: dict[str, Any] = {"timeout": 15, "max_retries": 0}
+            openai_kwargs: dict[str, Any] = {"timeout": 60, "max_retries": 0}
             if self._api_key:
                 # Override token-based default with explicit key auth when provided.
                 openai_kwargs["api_key"] = self._api_key
@@ -756,6 +777,7 @@ class FoundryNarrativeGenerator:
                 model=self._deployment,
                 messages=messages,
                 max_completion_tokens=max_completion_tokens,
+                response_format={"type": "json_object"},
             )
         else:
             # Backward-compatibility path for older SDK surfaces.
@@ -774,6 +796,7 @@ class FoundryNarrativeGenerator:
                 max_tokens=max_completion_tokens,
             )
 
+        record_model_usage(getattr(response, "usage", None))
         choices = getattr(response, "choices", None)
         if not choices:
             raise RuntimeError("Foundry response has no choices")

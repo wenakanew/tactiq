@@ -16,10 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgomp1
     && mkdir -p /app /data/media && chown -R tactiq:tactiq /app /data
 
 WORKDIR /app
+COPY tools/fetch_detector.py /tmp/fetch_detector.py
+RUN python /tmp/fetch_detector.py
 COPY requirements.lock pyproject.toml ./
 RUN python -m pip install --no-cache-dir -r requirements.lock
 COPY services/backend ./services/backend
 RUN python -m pip install --no-cache-dir --no-deps .
+RUN python -c "from tactiq.agents.workflow import run_foundry_commentary; from agent_framework.openai import OpenAIChatClient; from azure.core.pipeline.transport import AioHttpTransport; AioHttpTransport()"
 
 USER tactiq
 EXPOSE 8080

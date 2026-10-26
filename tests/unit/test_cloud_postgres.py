@@ -209,6 +209,32 @@ def test_claim_composes_with_cloud_worker_and_consumes_an_attempt():
     assert params == ("worker", 60, "tenant", "job")
 
 
+def test_global_claim_capacity_rejects_without_consuming_an_attempt():
+    connection = Connection(None, {"total": 1})
+    store = PostgresStore(lambda: connection, max_running=1)
+    assert store.claim(WorkReference(tenant_id="other", job_id="job"), "worker", 60) is None
+    queries = [sql for sql, _ in connection.calls]
+    assert "pg_advisory_xact_lock(854917020605)" in queries[2]
+    assert "lease_until>clock_timestamp()" in queries[3]
+    assert all("attempts=attempts+1" not in sql for sql in queries)
+    assert connection.committed
+
+
+def test_global_claim_capacity_and_job_update_share_one_transaction():
+    connection = Connection(None, {"total": 0}, None, {"fence": 1, "kind": "analyse", "payload": {}})
+    store = PostgresStore(lambda: connection, max_running=1)
+    claim = store.claim(WorkReference(tenant_id="tenant", job_id="job"), "worker", 60)
+    assert claim is not None
+    assert connection.committed and not connection.results
+    assert "UPDATE tactiq_cloud_jobs SET status='running'" in connection.calls[-1][0]
+
+
+@pytest.mark.parametrize("maximum", [0, 101, True])
+def test_global_claim_capacity_rejects_invalid_limits(maximum):
+    with pytest.raises(ValueError):
+        PostgresStore(lambda: pytest.fail("No connection needed"), max_running=maximum)
+
+
 @pytest.mark.parametrize("operation", ["renew", "finish", "fail", "cancelled"])
 def test_worker_updates_bind_owner_tenant_job_fence_and_live_lease(operation):
     store, connection = store_with(None)

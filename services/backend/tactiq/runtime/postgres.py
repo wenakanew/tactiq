@@ -25,14 +25,17 @@ from .contracts import (
 
 
 class PostgresStore:
-    def __init__(self, connect: Callable[[], Any]) -> None:
+    def __init__(self, connect: Callable[[], Any], *, max_running: int | None = None) -> None:
         """connect returns a NEW psycopg3 connection with dict_row row_factory.
 
         An injected factory allows managed-identity token refresh at connection
         creation. It must not return an existing transaction or autocommit=False
         connection shared with another operation.
         """
+        if max_running is not None:
+            bounded_integer(max_running, "max_running", 1, 100)
         self._connect = connect
+        self._max_running = max_running
 
     @classmethod
     def from_dsn(cls, dsn: str) -> PostgresStore:
@@ -248,6 +251,14 @@ class PostgresStore:
         identifier(owner, "owner")
         bounded_integer(lease_seconds, "lease_seconds", 15, 300)
         with self._transaction() as connection:
+            if self._max_running is not None:
+                connection.execute("SELECT pg_advisory_xact_lock(854917020605)")
+                running = connection.execute(
+                    """SELECT count(*) AS total FROM tactiq_cloud_jobs
+                       WHERE status='running' AND lease_until>clock_timestamp()"""
+                ).fetchone()
+                if running["total"] >= self._max_running:
+                    return None
             # Exhausted, crashed claims must become terminal on redelivery.
             connection.execute(
                 """UPDATE tactiq_cloud_jobs SET status='dead_letter',lease_owner=NULL,lease_until=NULL

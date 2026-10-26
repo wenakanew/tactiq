@@ -4,6 +4,8 @@
 
 ## A concise, repeatable story
 
+The [live Azure workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) uses a budget-limited pilot: allow cold starts and up to fifteen-minute dispatch, and check the one-new-analysis-per-UTC-day global allowance before presenting. Reuse an already owned analysis; a new guest/browser cannot read another workspace's match. [Production screenshots and verification scope](../azure/deployment.md#visible-production-evidence) are available when the daily processing allocation is already consumed.
+
 **Question:** Can a viewer understand an important passage without trusting an unexplained AI verdict?
 
 1. **Introduce the product.** Show the landing page and the five-stage pipeline. State that synthetic scenes are generated, not league tracking.

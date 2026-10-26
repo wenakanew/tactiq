@@ -6,7 +6,7 @@ async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled =
   let sessionReads = 0;
   let workspaceOrigin = "";
   let failNextCreate = false;
-  let failNextCapacity = false, sessionUnavailable = false;
+  let failNextCapacity = false, sessionUnavailable = false, unavailableSessions = 0;
   const ids: string[] = [];
   let memberIds: string[] = [];
   const operationIds: string[] = [];
@@ -30,9 +30,12 @@ async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled =
       return route.fulfill(established ? { json: session() } : { status: 401, json: { detail: "No session" } });
     }
     if (path === "/api/v1/session/guest") {
-      if (sessionUnavailable) return route.fulfill({ status: 503, json: { detail: {
-        code: "database_capacity", message: "Database request capacity is full; retry the same operation",
-      } }, headers: { "Retry-After": "1", "Access-Control-Expose-Headers": "Retry-After" } });
+      if (sessionUnavailable) {
+        unavailableSessions += 1;
+        return route.fulfill({ status: 503, json: { detail: {
+          code: "database_capacity", message: "Database request capacity is full; retry the same operation",
+        } }, headers: { "Retry-After": "1", "Access-Control-Expose-Headers": "Retry-After" } });
+      }
       established = true; guestInitializations += 1;
       return route.fulfill({ json: session() });
     }
@@ -98,7 +101,7 @@ async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled =
       expect((await initialized).status()).toBe(200);
     },
     get creates() { return creates; }, get guestInitializations() { return guestInitializations; },
-    get sessionReads() { return sessionReads; },
+    get sessionReads() { return sessionReads; }, get unavailableSessions() { return unavailableSessions; },
     operationIds, protectedReads, failNext() { failNextCreate = true; },
     failCapacity() { failNextCapacity = true; },
     recoverSession() { sessionUnavailable = false; },
@@ -171,6 +174,8 @@ test("unapproved processing allocation disables only new analyses while owned hi
 
 test("transport retries reuse an operation; replay, reopening and browser navigation do not start another analysis", async ({ page }) => {
   const fixture = await trialFixture(page);
+  // Install before the app loads so React and the workspace timers share one controllable clock.
+  await page.clock.install();
   await fixture.open();
   await page.getByLabel("Live commentary", { exact: true }).uncheck();
   fixture.failNext();
@@ -181,16 +186,25 @@ test("transport retries reuse an operation; replay, reopening and browser naviga
   expect(fixture.operationIds[0]).toBe(fixture.operationIds[1]);
   await page.getByRole("button", { name: "Play replay", exact: true }).click();
   await page.getByRole("link", { name: "Home", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  await expect(page.getByRole("heading", { name: "Watch the game. Understand the why.", exact: true })).toBeVisible();
   await fixture.open();
   await expect(page.locator("#match-stage")).toHaveAttribute("data-match-id", "match_trial_1");
   expect(fixture.creates).toBe(1);
   expect(fixture.protectedReads).toEqual([]);
   await page.getByRole("button", { name: "New match", exact: true }).click();
+  await page.clock.pauseAt(new Date(Date.now() + 2_000));
   fixture.failCapacity();
   await page.getByRole("button", { name: "Start live scenario", exact: true }).click();
+  // Losing the guest principal resets the workspace, which makes one automatic session attempt.
+  // Recover only after that attempt has also failed so the explicit retry is the one that succeeds.
+  await expect.poll(() => fixture.unavailableSessions).toBeGreaterThanOrEqual(2);
   await expect(page.getByRole("heading", { name: "Let's reconnect.", exact: true })).toBeVisible();
   fixture.recoverSession();
   await page.getByRole("button", { name: "Retry connection", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Let's reconnect.", exact: true })).toHaveCount(0);
+  await page.clock.runFor(1100);
+  await page.clock.resume();
   await expect(page.getByRole("button", { name: "Start live scenario", exact: true })).toBeEnabled();
   await start(page, 2);
   expect(fixture.operationIds[2]).toBe(fixture.operationIds[3]);

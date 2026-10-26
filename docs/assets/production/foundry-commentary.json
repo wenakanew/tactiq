@@ -1,0 +1,42 @@
+{
+  "scope": "management-plane provider smoke; existing synthetic evidence; not browser authentication",
+  "elapsed_seconds": 16.02,
+  "reserved_tokens": 9159,
+  "narrative": {
+    "title": "Team B central-channel overload",
+    "body": "Simulated input: in this brief passage, the tracking observations indicate that Team B have more players near the ball in the central channel. The evidence records 4 nearby attackers against 2 nearby defenders, showing a local numerical overload at the observed moment. This may offer Team B an immediate positional advantage around the ball, but the broadcast-depth evidence contains no phase events or player-level attribution. It therefore does not establish a pass, shot, possession outcome or deliberate tactical pattern; it describes only the observed local spacing within this passage.",
+    "audience_mode": "coach",
+    "language": "en-GB",
+    "fallback_used": false,
+    "provider": "foundry",
+    "grounding": {
+      "status": "structure-numbers-and-entity-ids-checked",
+      "claims": [
+        {
+          "metric": "nearby_attackers",
+          "value": 4.0,
+          "supporting_event_ids": [
+            "a1466f23-ee5b-530e-bf0e-876c9045e8ae",
+            "067c74e6-62a6-58a8-a0d0-d97068def1c1",
+            "dc8695aa-bd9f-5002-8143-d680cc1720f8"
+          ]
+        },
+        {
+          "metric": "nearby_defenders",
+          "value": 2.0,
+          "supporting_event_ids": [
+            "a1466f23-ee5b-530e-bf0e-876c9045e8ae",
+            "067c74e6-62a6-58a8-a0d0-d97068def1c1",
+            "dc8695aa-bd9f-5002-8143-d680cc1720f8"
+          ]
+        }
+      ]
+    }
+  },
+  "usage": {
+    "input_tokens": 1121,
+    "output_tokens": 620
+  },
+  "reservation_retained": false,
+  "settled_cost_microusd": 52230
+}

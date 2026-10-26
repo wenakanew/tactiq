@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass
 import hashlib
 from importlib.metadata import version
@@ -21,6 +22,7 @@ from agent_framework import Agent, Executor, WorkflowBuilder, WorkflowContext, h
 from tactiq.agents.commentary import CommentaryTurn, GeneratedRole, deep_supported
 from tactiq.agents.grounding import validate_text
 from tactiq.agents.localization import language_copy
+from tactiq.agents.usage import record_model_usage
 from tactiq.domain.models import Insight
 
 SDK_VERSION = "1.23.0"
@@ -108,6 +110,17 @@ CONTRACT = (
 )
 
 
+def _bounded_role_prompt(prompt: str, instructions: str) -> str:
+    serialized = json.dumps({
+        "instructions": instructions,
+        "prompt": prompt,
+        "response_format": GeneratedRole.model_json_schema(),
+    }, ensure_ascii=True)
+    if len(serialized.encode("utf-8")) > 64_000:
+        raise ValueError("Commentary role request exceeds its input budget")
+    return prompt
+
+
 def _validated_role(response: Any, evidence: MomentEvidence) -> GeneratedRole:
     # Parse again even if an adapter supplies .value: the application contract is
     # authoritative and an unvalidated injected client cannot bypass this gate.
@@ -121,39 +134,48 @@ def _validated_role(response: Any, evidence: MomentEvidence) -> GeneratedRole:
 
 
 class LeadExecutor(Executor):
-    def __init__(self, agent: Agent, trace: list[dict[str, Any]]) -> None:
+    def __init__(self, agent: Agent, trace: list[dict[str, Any]], instructions: str) -> None:
         super().__init__(id="lead")
-        self.agent, self.trace = agent, trace
+        self.agent, self.trace, self.instructions = agent, trace, instructions
 
     @handler
     async def run(self, evidence: MomentEvidence, ctx: WorkflowContext[ValidatedLead]) -> None:
         self.trace.append({"role": "lead", "status": "started"})
-        response = await self.agent.run(
+        prompt = _bounded_role_prompt(
             f"Describe WHAT happens in {evidence.paragraphs} ordered paragraphs. "
             f"{'60-90 words total' if evidence.paragraphs == 2 else '15-30 words total'}. "
             f"INPUT_JSON: {evidence.prompt()}",
+            self.instructions,
         )
+        response = await self.agent.run(prompt)
+        record_model_usage(response.usage_details, framework=True)
         lead = _validated_role(response, evidence)
         self.trace.append({"role": "lead", "status": "grounded", "handoff": "analyst"})
         await ctx.send_message(ValidatedLead(evidence, lead.model_dump_json()))
 
 
 class AnalystExecutor(Executor):
-    def __init__(self, agent: Agent, trace: list[dict[str, Any]], validate_dialogue: Callable) -> None:
+    def __init__(
+        self, agent: Agent, trace: list[dict[str, Any]], validate_dialogue: Callable, instructions: str,
+    ) -> None:
         super().__init__(id="analyst")
         self.agent, self.trace, self.validate_dialogue = agent, trace, validate_dialogue
+        self.instructions = instructions
 
     @handler
     async def run(self, handoff: ValidatedLead, ctx: WorkflowContext[None, list[CommentaryTurn]]) -> None:
         evidence = handoff.evidence
         lead = GeneratedRole.model_validate_json(handoff.role_json)
         self.trace.append({"role": "analyst", "status": "started", "handoff": "validated-lead"})
-        response = await self.agent.run(
+        prompt = _bounded_role_prompt(
             f"Explain WHY the measurements matter, then their limitations, in "
             f"{evidence.paragraphs} ordered paragraphs complementing the lead. "
             f"{'60-90 words total' if evidence.paragraphs == 2 else '15-30 words total'}. "
             f"VALIDATED_LEAD_JSON: {handoff.role_json}\nINPUT_JSON: {evidence.prompt()}",
+            self.instructions,
         )
+        response = await self.agent.run(prompt)
+        record_model_usage(response.usage_details, framework=True)
         analyst = _validated_role(response, evidence)
         turns = [CommentaryTurn(role=role, text=text)
                  for pair in zip(lead.texts, analyst.texts)
@@ -173,20 +195,21 @@ async def run_commentary(
         raise ValueError("Commentary requires distinct ordered lead and analyst profiles")
     evidence = MomentEvidence.from_insight(insight, language)
     trace: list[dict[str, Any]] = []
+    instructions = [profile.instructions + CONTRACT + f"\nAssigned role: {profile.role}." for profile in profiles]
     agents = [
         Agent(client=client, name=profile.role,
-              instructions=profile.instructions + CONTRACT + f"\nAssigned role: {profile.role}.",
+              instructions=instructions[index],
               default_options={"response_format": GeneratedRole, "max_tokens": 1100 if evidence.paragraphs == 2 else 500,
                                "store": False})
-        for profile in profiles
+        for index, profile in enumerate(profiles)
     ]
-    lead = LeadExecutor(agents[0], trace)
-    analyst = AnalystExecutor(agents[1], trace, validate_dialogue)
+    lead = LeadExecutor(agents[0], trace, instructions[0])
+    analyst = AnalystExecutor(agents[1], trace, validate_dialogue, instructions[1])
     graph = (WorkflowBuilder(start_executor=lead, max_iterations=2, output_from=[analyst],
                              name="tactiq-moment-commentary")
              .add_edge(lead, analyst).build())
     try:
-        async with asyncio.timeout(40):
+        async with asyncio.timeout(130):
             events = await graph.run(evidence)
         outputs = events.get_outputs()
         if len(outputs) != 1:
@@ -211,7 +234,8 @@ def run_sync(factory: Callable) -> WorkflowCommentary:
     except RuntimeError:
         return asyncio.run(factory())
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="tactiq-commentary") as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
+        context = copy_context()
+        return executor.submit(context.run, lambda: asyncio.run(factory())).result()
 
 
 async def run_foundry_commentary(
@@ -227,7 +251,7 @@ async def run_foundry_commentary(
         exclude_managed_identity_credential=os.getenv("APP_ENV", "local").lower() != "production",
     ) as credential:
         async with AIProjectClient(endpoint=endpoint, credential=credential, retry_total=0) as project:
-            kwargs: dict[str, Any] = {"timeout": 15, "max_retries": 0}
+            kwargs: dict[str, Any] = {"timeout": 60, "max_retries": 0}
             if api_key:
                 kwargs["api_key"] = api_key
             async with project.get_openai_client(**kwargs) as openai:

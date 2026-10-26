@@ -1,0 +1,82 @@
+{
+  "scope": "Management-plane probe of existing synthetic evidence; not browser authentication or new analysis admission",
+  "dual": {
+    "primary_text": "In this simulated sequence, Team B create a central overload, with four observed attackers near the ball against two defenders.",
+    "secondary_text": "This matters because the local advantage can open central options; however, simulated broadcast-view tracking captures only a brief observed window, not the outcome.",
+    "language": "en-GB",
+    "fallback_used": false,
+    "provider": "foundry-agent-framework",
+    "audit": {
+      "orchestration_path": "microsoft-agent-framework",
+      "sdk_version": "1.23.0",
+      "openai_adapter_version": "1.17.0",
+      "request_id": "8e465ca722bc4cb0a3b5341e66f37654",
+      "model_deployment": "tactiq-commentary",
+      "agents": [
+        {
+          "role": "lead",
+          "name": "tactiq-lead",
+          "version": "builtin-v1",
+          "source": "builtin-profile",
+          "instructions_sha256": "6dadce6d44932e727a5466615e0efc997faf4d070a69e62c8845d4ad53439650"
+        },
+        {
+          "role": "analyst",
+          "name": "tactiq-analyst",
+          "version": "builtin-v1",
+          "source": "builtin-profile",
+          "instructions_sha256": "dabf7570c888fff348dcd3cf3cace4043bb0c4596ca86be5d30b6ad9b843d785"
+        }
+      ],
+      "trace": [
+        {
+          "role": "lead",
+          "status": "started"
+        },
+        {
+          "role": "lead",
+          "status": "grounded",
+          "handoff": "analyst"
+        },
+        {
+          "role": "analyst",
+          "status": "started",
+          "handoff": "validated-lead"
+        },
+        {
+          "role": "analyst",
+          "status": "grounded",
+          "assembly": "ordered"
+        }
+      ],
+      "grounding_status": "structure-numbers-and-entity-ids-checked",
+      "human_locale_review_required": false,
+      "tuning_version": null
+    },
+    "turns": [
+      {
+        "role": "lead",
+        "text": "In this simulated sequence, Team B create a central overload, with four observed attackers near the ball against two defenders."
+      },
+      {
+        "role": "analyst",
+        "text": "This matters because the local advantage can open central options; however, simulated broadcast-view tracking captures only a brief observed window, not the outcome."
+      }
+    ],
+    "depth": "broadcast"
+  },
+  "usage": {
+    "input_tokens": 1819,
+    "output_tokens": 546
+  },
+  "reservation_retained": false,
+  "settled_cost_microusd": 70950,
+  "cross_workspace_adapter_denied": true,
+  "speech_provider": "azure-speech-ordered-voices-rest",
+  "audio_bytes": 107280,
+  "audio_sha256": "5ed0694469822e025fcf51b6cd6dbf027124b1b3284caa2106a499fade5f3994",
+  "private_blob_full_read": true,
+  "private_blob_range_read": true,
+  "speech_reservation_retained": true,
+  "audio_chunks": 24
+}

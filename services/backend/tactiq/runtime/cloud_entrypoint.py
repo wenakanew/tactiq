@@ -72,7 +72,11 @@ def main() -> None:
         with credential, ServiceBusClient(namespace, credential, retry_total=2) as client:
             with client.get_queue_sender(queue) as sender:
                 if worker is None:
+                    maintenance_at = 0.0
                     while not stop.is_set():
+                        if time.monotonic() >= maintenance_at:
+                            dependencies.store.recover()
+                            maintenance_at = time.monotonic() + 60
                         dispatched = dispatch_once(
                             dependencies.store, owner,
                             lambda reference, operation: send_reference(sender, reference, operation),

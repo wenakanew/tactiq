@@ -4,13 +4,17 @@
 
 ## Deployment boundary
 
-This implementation is a **single-host, single-API-process** deployment with an exclusive durable SQLite job runner, a bounded thread pool, and private local media objects. It is not a distributed worker system. Keep Uvicorn at one worker and attach a persistent writable volume for both database and media.
+Tactiq has two explicit modes. The [connected Azure pilot](../azure/deployment.md) uses private PostgreSQL/Blob, Service Bus, isolated analysis jobs and database-backed guest/Microsoft sessions. Its API/web scale to zero, with one new native analysis per UTC day globally, one authoritative active analysis lease, 840-second worker timeout, fifteen-minute dispatch and a fixed $6.50 shared model/Speech allocation. Keep these budget controls; a guest trial allowance does not override global processing availability.
+
+For that cloud pilot, use the actual resource names, immutable image references, private backup/restore evidence and maintenance qualifications in the [dated deployment record](../azure/deployment.md). Daily logical backups run at 03:15 UTC with randomized delay and eight-day Blob lifecycle retention. The Microsoft confidential-client certificate expires after 90 days; budget periods do not renew automatically. Review certificate validity, database disk space, backup timer/failures, queue age, provider reservations and whole-subscription spending before a demonstration. Never re-enable a bootstrap job/writer grant or rotate secrets as a routine health check.
+
+The remaining reference-host instructions below apply to **local/single-host mode**, unless a section explicitly says cloud. That mode uses an exclusive durable SQLite job runner, a bounded thread pool, and private local media objects. Keep its Uvicorn at one worker and attach a persistent writable volume for both database and media; do not use it as a fallback for authoritative cloud data.
 
 `Dockerfile`, `apps/web/Dockerfile`, and `compose.yml` package the API and same-origin web proxy. Compose defaults to local mode. For a production host, terminate HTTPS at a trusted gateway, set `APP_ENV=production`, configure authentication, and explicitly allow the public HTTPS browser origin. Never expose local unauthenticated mode publicly.
 
 Do not deploy until the measured readiness report passes `tactiq.evaluation gate` and the applicable deployment approval is recorded. A container image, an HTTP 200, and a green unit suite are not release approval.
 
-The approved PostgreSQL/Blob/Service Bus, Microsoft identity/trial, and Agent Framework migration is planned/in progress. Do not scale this reference API across replicas or describe it as the verified cloud target. Region/SKUs, budget headroom, Linux runtime, and staging evidence remain unresolved.
+Do not scale the reference SQLite API across replicas or describe reference-host checks as cloud proof. Cloud components are deployed; integrated provider/login, failure-recovery and capacity evidence must still be read according to its exact published scope.
 
 ## Access control
 

@@ -6,6 +6,12 @@ agent-framework-core==1.23.0
     #   agent-framework-openai
 agent-framework-openai==1.17.0
     # via match-intelligence (pyproject.toml)
+aiohappyeyeballs==2.7.1
+    # via aiohttp
+aiohttp==3.14.5
+    # via match-intelligence (pyproject.toml)
+aiosignal==1.4.0
+    # via aiohttp
 annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
@@ -17,6 +23,8 @@ anyio==4.15.1
     #   openai
     #   starlette
     #   watchfiles
+attrs==26.1.0
+    # via aiohttp
 azure-ai-projects==2.9.0
     # via match-intelligence (pyproject.toml)
 azure-cognitiveservices-speech==1.53.0
@@ -62,6 +70,10 @@ cryptography==50.0.2
     #   pyjwt
 fastapi==0.162.0
     # via match-intelligence (pyproject.toml)
+frozenlist==1.8.0
+    # via
+    #   aiohttp
+    #   aiosignal
 h11==0.16.0
     # via
     #   httpcore2
@@ -79,6 +91,7 @@ idna==3.20
     #   anyio
     #   httpx2
     #   requests
+    #   yarl
 isodate==0.7.2
     # via
     #   azure-ai-projects
@@ -95,6 +108,10 @@ msal-extensions==1.3.1
     # via azure-identity
 msgspec==0.22.0
     # via agent-framework-core
+multidict==7.2.1
+    # via
+    #   aiohttp
+    #   yarl
 mutagen==1.48.1
     # via yt-dlp
 numpy==2.5.4
@@ -112,6 +129,10 @@ opentelemetry-api==1.45.1
     # via
     #   agent-framework-core
     #   fastapi
+propcache==0.5.4
+    # via
+    #   aiohttp
+    #   yarl
 psycopg==3.3.6
     # via match-intelligence (pyproject.toml)
 psycopg-binary==3.3.6 ; implementation_name != 'pypy'
@@ -195,6 +216,8 @@ websockets==17.3
     # via
     #   uvicorn
     #   yt-dlp
+yarl==1.25.1
+    # via aiohttp
 yt-dlp==2026.10.21
     # via match-intelligence (pyproject.toml)
 yt-dlp-ejs==0.8.0

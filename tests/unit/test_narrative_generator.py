@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from tactiq.agents.narrative import DeterministicNarrativeGenerator, FoundryNarrativeGenerator
@@ -78,6 +79,16 @@ def test_foundry_generator_falls_back_on_foundry_error() -> None:
 
     assert result.fallback_used is True
     assert result.provider == "deterministic"
+
+
+def test_single_prompt_defines_exact_claim_and_entity_contract() -> None:
+    prompt = FoundryNarrativeGenerator._build_prompt(_sample_insight(), "fan", "en-GB", None)
+    schema = json.loads(prompt.split("OUTPUT_JSON_SCHEMA:\n", 1)[1].split("\nINPUT_JSON:", 1)[0])
+    assert schema["additionalProperties"] is False
+    assert schema["$defs"]["Claim"]["additionalProperties"] is False
+    assert set(schema["$defs"]["Claim"]["properties"]) == {"metric", "value", "supporting_event_ids"}
+    assert "never supporting event IDs" in prompt
+    assert "even in disclaimers" in prompt
 
 
 def test_deterministic_dual_commentary_has_two_distinct_lines() -> None:

@@ -137,6 +137,59 @@ def test_connection_startup_failure_releases_the_shared_slot():
         assert len(attempts) == 2
 
 
+def test_managed_identity_database_refreshes_token_for_each_connection(monkeypatch):
+    import sys
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from tactiq.runtime.cloud_connections import BoundedPostgresConnections
+
+    psycopg = pytest.importorskip("psycopg")
+    tokens = iter(["token-one", "token-two"])
+    scopes, connections, identities = [], [], []
+
+    def credential(**kwargs):
+        identities.append(kwargs)
+
+        def get_token(scope):
+            scopes.append(scope)
+            return SimpleNamespace(token=next(tokens))
+
+        return nullcontext(SimpleNamespace(get_token=get_token))
+
+    monkeypatch.setitem(sys.modules, "azure.identity", SimpleNamespace(ManagedIdentityCredential=credential))
+    monkeypatch.setattr(
+        psycopg, "connect",
+        lambda dsn, **kwargs: connections.append((dsn, kwargs)) or nullcontext(object()),
+    )
+    dsn = "host=test.postgres.database.azure.com dbname=tactiq user=api sslmode=verify-full"
+    gate = BoundedPostgresConnections.from_dsn(dsn, managed_identity=True, client_id="identity")
+    with gate():
+        pass
+    with gate():
+        pass
+    assert [kwargs["password"] for _, kwargs in connections] == ["token-one", "token-two"]
+    assert scopes == ["https://ossrdbms-aad.database.windows.net/.default"] * 2
+    assert identities == [{"client_id": "identity"}] * 2
+    assert all(value == dsn for value, _ in connections)
+
+
+@pytest.mark.parametrize("dsn", [
+    "host=localhost user=api sslmode=verify-full",
+    "host=test.postgres.database.azure.com user=api sslmode=require",
+    "host=test.postgres.database.azure.com sslmode=verify-full",
+    "host=test.postgres.database.azure.com user=api sslmode=verify-full password=secret",
+    "host=test.postgres.database.azure.com user=api sslmode=verify-full passfile=private",
+    "host=test.postgres.database.azure.com hostaddr=127.0.0.1 user=api sslmode=verify-full",
+    "host=other,test.postgres.database.azure.com user=api sslmode=verify-full",
+])
+def test_managed_identity_database_rejects_unsafe_dsn_before_authentication(dsn):
+    from tactiq.runtime.cloud_connections import BoundedPostgresConnections
+
+    pytest.importorskip("psycopg")
+    with pytest.raises(ValueError, match="password-free Azure DSN"):
+        BoundedPostgresConnections.from_dsn(dsn, managed_identity=True)
+
 @pytest.mark.parametrize("maximum", [0, 17, True])
 def test_connection_admission_must_have_a_small_explicit_bound(maximum):
     from tactiq.runtime.cloud_connections import BoundedPostgresConnections

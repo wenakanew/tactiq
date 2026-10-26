@@ -96,18 +96,28 @@ def compose_cloud(*, include_identity: bool = True) -> CloudDependencies:
         microsoft_redirect_uri=os.getenv("TACTIQ_MICROSOFT_REDIRECT_URI") or None,
         generation=GenerationSettings.from_environment(),
     )
-    connections = BoundedPostgresConnections.from_dsn(dsn, maximum=settings.database_max_connections)
+    database_auth = os.getenv("TACTIQ_POSTGRES_AUTH", "password").strip()
+    if database_auth not in {"password", "managed_identity"}:
+        raise ValueError("TACTIQ_POSTGRES_AUTH must be password or managed_identity")
+    connections = BoundedPostgresConnections.from_dsn(
+        dsn, maximum=settings.database_max_connections,
+        managed_identity=database_auth == "managed_identity", client_id=os.getenv("AZURE_CLIENT_ID") or None,
+        ca_pem=os.getenv("TACTIQ_POSTGRES_CA_PEM") or None,
+    )
     access = PostgresAccessStore(connections, ip_hmac_key=hmac_key, usage_policy=settings.generation.policy)
     sign_in = None
-    identity_names = ("TACTIQ_MICROSOFT_CLIENT_ID", "TACTIQ_MICROSOFT_CLIENT_SECRET", "TACTIQ_MICROSOFT_REDIRECT_URI")
     if include_identity:
+        certificate = os.getenv("TACTIQ_MICROSOFT_CLIENT_CERTIFICATE_PEM") or None
         oidc = MicrosoftOIDCSettings(
-            *(required(name) for name in identity_names),
+            required("TACTIQ_MICROSOFT_CLIENT_ID"),
+            os.getenv("TACTIQ_MICROSOFT_CLIENT_SECRET", "") if certificate else required("TACTIQ_MICROSOFT_CLIENT_SECRET"),
+            required("TACTIQ_MICROSOFT_REDIRECT_URI"),
             audience=os.getenv("TACTIQ_MICROSOFT_AUDIENCE", "common"),
+            certificate_pem=certificate,
         )
         sign_in = MicrosoftSignIn(access, MicrosoftOIDCProvider(oidc))
     media = PrivateBlobStore.from_account_url(
         required("TACTIQ_BLOB_ACCOUNT_URL"), required("TACTIQ_BLOB_CONTAINER"),
         client_id=os.getenv("AZURE_CLIENT_ID") or None, max_media_bytes=settings.max_upload_bytes,
     )
-    return CloudDependencies(settings, CloudApplicationStore(connections), access, media, sign_in, owned=True)
+    return CloudDependencies(    settings, CloudApplicationStore(connections, max_running=1), access, media, sign_in, owned=True)

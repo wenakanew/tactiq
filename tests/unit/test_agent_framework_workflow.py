@@ -4,6 +4,7 @@ import json
 import pytest
 
 from tactiq.agents.narrative import DeterministicNarrativeGenerator, FoundryNarrativeGenerator
+from tactiq.agents.usage import capture_model_usage
 from tactiq.domain.models import EvidenceItem, Insight
 
 # The integration is optional for local deterministic installs. CI exercising
@@ -36,9 +37,10 @@ PROFILES = (
 class OfflineClient:
     additional_properties = {}
 
-    def __init__(self, responses):
+    def __init__(self, responses, usage=None):
         self.responses = list(responses)
         self.calls = []
+        self.usage = usage
 
     async def get_response(self, messages, *, stream=False, options=None, **kwargs):
         assert not stream
@@ -46,7 +48,7 @@ class OfflineClient:
         item = self.responses.pop(0)
         if isinstance(item, Exception):
             raise item
-        return ChatResponse(messages=[Message("assistant", [json.dumps(item)])])
+        return ChatResponse(messages=[Message("assistant", [json.dumps(item)])], usage_details=self.usage)
 
 
 def role(text="the supported passage shows attacking pressure.", count=1):
@@ -89,6 +91,33 @@ def test_real_sdk_schedules_distinct_roles_with_validated_typed_handoff():
     assert "Describe the passage." not in audit and "secret.mp4" not in audit
 
 
+def test_real_sdk_usage_is_aggregated_across_roles_and_sync_thread_bridge():
+    async def request():
+        client = OfflineClient([role(), role()], usage={
+            "input_token_count": 100, "output_token_count": 20, "total_token_count": 120,
+        })
+        with capture_model_usage() as capture:
+            run_sync(lambda: run_commentary(
+                moment(), "en-GB", client, PROFILES, "offline",
+                FoundryNarrativeGenerator._validate_dialogue,
+            ))
+        actual = capture.complete(2)
+        assert actual.input_tokens == 200 and actual.output_tokens == 40
+        assert actual.total_tokens == 240
+
+    asyncio.run(request())
+
+
+def test_partial_workflow_has_no_complete_usage():
+    client = OfflineClient([role(), RuntimeError("Analyst failed")], usage={
+        "input_token_count": 100, "output_token_count": 20, "total_token_count": 120,
+    })
+    with capture_model_usage() as capture:
+        with pytest.raises(Exception, match="Analyst failed"):
+            run(client)
+    assert len(capture.calls) == 1 and capture.complete(2) is None
+
+
 def test_immutable_shared_evidence_excludes_private_context_and_identifiers():
     insight = moment()
     evidence = MomentEvidence.from_insight(insight, "en-GB")
@@ -98,6 +127,32 @@ def test_immutable_shared_evidence_excludes_private_context_and_identifiers():
     assert all(secret not in payload for secret in ("secret.mp4", "private.invalid", "PRIVATE", "private-match"))
     with pytest.raises(AttributeError):
         evidence.language = "fr-FR"
+
+
+@pytest.mark.parametrize("profile_index,expected_calls", [(0, 0), (1, 1)])
+def test_framework_bounds_complete_role_request_before_each_paid_call(profile_index, expected_calls):
+    profiles = list(PROFILES)
+    original = profiles[profile_index]
+    profiles[profile_index] = RoleProfile(
+        original.role, original.name, "x" * 64000, original.version, original.source,
+    )
+    client = OfflineClient([role(), role()])
+    with pytest.raises(Exception, match="input budget"):
+        asyncio.run(run_commentary(
+            moment(), "en-GB", client, tuple(profiles), "offline-deployment",
+            FoundryNarrativeGenerator._validate_dialogue,
+        ))
+    assert len(client.calls) == expected_calls
+
+
+def test_framework_request_bound_counts_schema_instructions_and_unicode_expansion():
+    from tactiq.agents.workflow import _bounded_role_prompt
+
+    assert _bounded_role_prompt("small evidence", "bounded profile") == "small evidence"
+    with pytest.raises(ValueError, match="input budget"):
+        _bounded_role_prompt("x" * 64000, "")
+    with pytest.raises(ValueError, match="input budget"):
+        _bounded_role_prompt("\u00e9" * 12000, "")
 
 
 @pytest.mark.parametrize("language", ["en-GB", "sw-KE", "fr-FR", "es-ES", "pt-BR", "ar-SA", "hi-IN"])
@@ -294,7 +349,7 @@ def test_foundry_factory_disables_retries_tools_and_closes_ephemeral_clients(mon
     assert len(result.turns) == 2
     assert captured["project"]["retry_total"] == 0
     assert captured["project"]["endpoint"] == "https://example.invalid"
-    assert captured["openai"] == {"timeout": 15, "max_retries": 0, "api_key": "offline-key"}
+    assert captured["openai"] == {"timeout": 60, "max_retries": 0, "api_key": "offline-key"}
     assert captured["adapter"]["model"] == "offline-deployment"
     assert captured["adapter"]["function_invocation_configuration"] == {"enabled": False}
     assert closed == ["Resource", "Project", "Credential"]

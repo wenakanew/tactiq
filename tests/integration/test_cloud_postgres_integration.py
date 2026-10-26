@@ -87,6 +87,22 @@ def test_pg_concurrent_writers_cannot_commit_the_same_revision(database):
     assert store.load("tenant", "match").revision == 2
 
 
+def test_pg_global_capacity_serializes_claims_across_tenants(database):
+    _, connect = database
+    store = PostgresStore(connect, max_running=1)
+    references = [WorkReference(tenant_id=f"tenant_{i}", job_id="job") for i in range(2)]
+    for ref in references:
+        store.admit_job(ref.tenant_id, ref.job_id, "analyse", {})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        claims = list(pool.map(lambda ref: store.claim(ref, ref.tenant_id, 60), references))
+    assert sum(claim is not None for claim in claims) == 1
+    winner = next(claim for claim in claims if claim is not None)
+    assert store.finish(winner, winner.tenant_id, {})
+    loser = next(ref for ref, claim in zip(references, claims) if claim is None)
+    assert store.claim(loser, loser.tenant_id, 60) is not None
+
+
 def test_pg_job_claim_lease_recovery_fencing_retry_and_cancellation(database):
     store, connect = database
     reference = WorkReference(tenant_id="tenant", job_id="job")

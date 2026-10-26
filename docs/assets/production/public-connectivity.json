@@ -1,0 +1,13 @@
+{
+  "verified_at": "2026-10-26T16:26:54.298Z",
+  "origin": "https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io",
+  "scope": "Real public browser; no new analysis, mocked routes or injected ownership",
+  "capabilities_http": 200,
+  "workspace_connected": true,
+  "other_workspace_state_http": 401,
+  "untrusted_origin_post_http": 403,
+  "exact_origin_credentialed_cors": true,
+  "microsoft_redirect_http": 303,
+  "interactive_microsoft_signin": "Not tested; no user credentials entered",
+  "status": "passed"
+}

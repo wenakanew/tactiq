@@ -16,6 +16,7 @@ import secrets
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Protocol
 from urllib.parse import urlsplit
 
@@ -32,6 +33,7 @@ class MicrosoftOIDCSettings:
     client_secret: str = field(repr=False)
     redirect_uri: str
     audience: str = "common"
+    certificate_pem: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         try:
@@ -39,8 +41,12 @@ class MicrosoftOIDCSettings:
                 raise ValueError
         except (ValueError, TypeError, AttributeError):
             raise ValueError("Microsoft client ID must be a canonical UUID") from None
-        if not isinstance(self.client_secret, str) or not self.client_secret.strip():
+        if not isinstance(self.client_secret, str) or (not self.client_secret.strip() and not self.certificate_pem):
             raise ValueError("A confidential-client credential is required")
+        if self.certificate_pem and self.client_secret:
+            raise ValueError("Configure exactly one confidential-client credential")
+        if self.certificate_pem:
+            self.client_credential()
         uri = urlsplit(self.redirect_uri)
         if (
             uri.scheme != "https" or not uri.hostname or uri.username or uri.password
@@ -53,6 +59,33 @@ class MicrosoftOIDCSettings:
                     raise ValueError
             except (ValueError, TypeError, AttributeError):
                 raise ValueError("Unsupported Microsoft account audience") from None
+
+    def client_credential(self) -> str | dict[str, str]:
+        if not self.certificate_pem:
+            return self.client_secret
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        try:
+            pem = self.certificate_pem.encode("ascii")
+            certificate = x509.load_pem_x509_certificate(pem)
+            key = serialization.load_pem_private_key(pem, password=None)
+            now = datetime.now(timezone.utc)
+            if (not isinstance(key, rsa.RSAPrivateKey) or key.key_size < 2048
+                    or not certificate.not_valid_before_utc <= now < certificate.not_valid_after_utc):
+                raise ValueError
+            encoding = serialization.Encoding.DER
+            format_ = serialization.PublicFormat.SubjectPublicKeyInfo
+            if key.public_key().public_bytes(encoding, format_) != certificate.public_key().public_bytes(encoding, format_):
+                raise ValueError
+        except (ValueError, TypeError, UnicodeError):
+            raise ValueError("Invalid confidential-client certificate") from None
+        return {
+            "private_key": self.certificate_pem,
+            # MSAL's certificate identifier uses SHA1; it is not a signing algorithm.
+            "thumbprint": certificate.fingerprint(hashes.SHA1()).hex(),  # nosec B303
+        }
 
 
 class OIDCProvider(Protocol):
@@ -82,7 +115,7 @@ class MicrosoftOIDCProvider:
 
         try:
             self._application = msal.ConfidentialClientApplication(
-                settings.client_id, client_credential=settings.client_secret,
+                settings.client_id, client_credential=settings.client_credential(),
                 authority=f"https://login.microsoftonline.com/{settings.audience}",
                 enable_pii_log=False,
                 token_cache=DiscardingTokenCache(),

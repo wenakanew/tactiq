@@ -1,0 +1,6 @@
+*.json
+!bicepconfig.json
+!validation-exceptions.json
+*.sarif
+*.xml
+__pycache__/

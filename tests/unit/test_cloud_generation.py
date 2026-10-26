@@ -7,8 +7,9 @@ from uuid import uuid4
 
 import pytest
 
-from tactiq.agents.narrative import DeterministicNarrativeGenerator
+from tactiq.agents.narrative import DeterministicNarrativeGenerator, FoundryNarrativeGenerator
 from tactiq.agents.speech import SpeechResult
+from tactiq.agents.usage import record_model_usage
 from tactiq.domain.models import EvidenceItem, Insight
 from tactiq.runtime.access import AccessDenied, AnalysisIntent, BudgetExceeded, SQLiteAccessStore, UsagePolicy
 from tactiq.runtime.cloud_generation import CloudGeneration, GenerationSettings, GenerationUnavailable
@@ -159,6 +160,38 @@ def test_paid_results_survive_service_restart_without_another_provider_call(runt
     assert r.access.trial_allowance(r.token, "127.0.0.1").remaining == 2
 
 
+def test_paid_model_reservation_uses_enforced_two_request_bound(runtime, monkeypatch):
+    calls = []
+    reserve = runtime.service._reserve
+
+    def capture(proof, operation, meter, units):
+        calls.append((meter, units))
+        return reserve(proof, operation, meter, units)
+
+    monkeypatch.setattr(runtime.service, "_reserve", capture)
+    script(runtime, dual=True)
+    assert calls == [("model_tokens", 2 * (64_000 + 1100 + 4096))]
+
+
+def test_single_model_reservation_uses_exact_utf8_prompt_and_completion_bound(runtime, monkeypatch):
+    calls = []
+    reserve = runtime.service._reserve
+    monkeypatch.setattr(runtime.service, "_reserve", lambda proof, operation, meter, units: (
+        calls.append((meter, units)) or reserve(proof, operation, meter, units)
+    ))
+    expected = FoundryNarrativeGenerator.single_request_token_bound(runtime.insight, "fan", "en-GB", None)
+    script(runtime)
+    assert calls == [("model_tokens", expected)]
+    assert 5696 < expected < 196608
+
+
+def test_single_model_bound_rejects_oversize_before_reserving(runtime, monkeypatch):
+    runtime.insight.context["notes"] = "x" * 64_001
+    with pytest.raises(ValueError, match="evidence exceeds"):
+        script(runtime)
+    assert runtime.model.calls == 0
+
+
 def test_concurrent_retries_never_repeat_paid_calls(runtime):
     def request(_):
         try:
@@ -232,3 +265,119 @@ def test_semantic_workflow_path_does_not_allow_persisted_filesystem_locations():
         bounded_json({"audit": {"orchestration_path": "C:\\private\\file"}}, 1024)
     with pytest.raises(CloudRecordError):
         bounded_json({"source_path": "private-file"}, 1024)
+
+
+def metered_model(runtime, monkeypatch, *, usages=None, fallback=False):
+    def generate(*args):
+        runtime.model.calls += 1
+        for usage in usages or []:
+            record_model_usage(usage)
+        result = runtime.service.fallback.generate(*args)
+        result.provider, result.fallback_used = "foundry", fallback
+        return result
+
+    monkeypatch.setattr(runtime.model, "generate", generate)
+
+
+def test_verified_usage_settles_only_after_durable_save_and_cache_never_repeats(runtime, monkeypatch):
+    r = runtime
+    metered_model(r, monkeypatch, usages=[{"prompt_tokens": 100, "completion_tokens": 23, "total_tokens": 123}])
+    r.service.settings = replace(r.settings, model_price=30_000_001)
+    settled = []
+    settle = r.access.settle_usage
+
+    def capture(proof, identifier, units, cost):
+        assert r.store.results and r.store.scripts
+        result = settle(proof, identifier, units, cost)
+        settled.append(result)
+        return result
+
+    monkeypatch.setattr(r.access, "settle_usage", capture)
+    first = script(r)
+    assert script(r) == first
+    assert r.model.calls == len(settled) == 1
+    assert settled[0].status == "settled"
+    assert settled[0].actual_cost_microusd == 3691
+
+
+@pytest.mark.parametrize("usages,fallback", [
+    ([], False),
+    ([None], False),
+    ([{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}], True),
+    ([{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}] * 2, False),
+    ([{"prompt_tokens": True, "completion_tokens": 2, "total_tokens": 3}], False),
+    ([{"prompt_tokens": 10, "completion_tokens": -1, "total_tokens": 9}], False),
+    ([{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 99}], False),
+    ([{"prompt_tokens": 10, "completion_tokens": 2}], False),
+])
+def test_uncertain_or_fallback_usage_keeps_full_reservation(runtime, monkeypatch, usages, fallback):
+    metered_model(runtime, monkeypatch, usages=usages, fallback=fallback)
+
+    def forbidden(*args):
+        pytest.fail("An uncertain call must not settle")
+
+    monkeypatch.setattr(runtime.access, "settle_usage", forbidden)
+    script(runtime)
+
+
+def test_durable_failure_retains_reservation_and_prevents_paid_retry(runtime, monkeypatch):
+    metered_model(runtime, monkeypatch, usages=[{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}])
+    settled = []
+    monkeypatch.setattr(runtime.access, "settle_usage", lambda *args: settled.append(args))
+
+    def fail(*args):
+        raise OSError("Durable store unavailable")
+
+    monkeypatch.setattr(runtime.store, "save_generation_result", fail)
+    with pytest.raises(OSError):
+        script(runtime)
+    with pytest.raises(GenerationUnavailable):
+        script(runtime)
+    assert runtime.model.calls == 1 and not settled
+
+
+def test_settlement_failure_is_explicit_and_cached_result_prevents_paid_retry(runtime, monkeypatch):
+    metered_model(runtime, monkeypatch, usages=[{"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}])
+
+    def fail(*args):
+        raise OSError("Ledger unavailable")
+
+    monkeypatch.setattr(runtime.access, "settle_usage", fail)
+    with pytest.raises(OSError):
+        script(runtime)
+    assert script(runtime)["script_id"]
+    assert runtime.model.calls == 1
+
+
+def test_reported_overrun_is_not_hidden_by_settlement(runtime, monkeypatch):
+    metered_model(runtime, monkeypatch, usages=[
+        {"prompt_tokens": 196608, "completion_tokens": 1, "total_tokens": 196609},
+    ])
+    with pytest.raises(GenerationUnavailable, match="exceeded"):
+        script(runtime)
+    assert runtime.model.calls == 1
+
+
+def test_dual_requires_both_trusted_role_responses(runtime, monkeypatch):
+    r = runtime
+
+    def generate(*args):
+        r.model.calls += 1
+        for _ in range(2):
+            record_model_usage({"input_token_count": 100, "output_token_count": 20, "total_token_count": 120},
+                               framework=True)
+        result = r.service.fallback.generate_dual_commentary(*args)
+        result.provider, result.fallback_used = "foundry-agent-framework", False
+        return result
+
+    monkeypatch.setattr(r.model, "generate_dual_commentary", generate)
+    settled = []
+    settle = r.access.settle_usage
+
+    def capture(*args):
+        settled.append(args[2:])
+        return settle(*args)
+
+    monkeypatch.setattr(r.access, "settle_usage", capture)
+    script(r, dual=True)
+    assert settled == [(240, 240)]

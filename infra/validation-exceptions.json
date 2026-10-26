@@ -1,0 +1,19 @@
+{
+  "scope": "Only the approved sttactiqprod3e4d media account in modules/data.bicep",
+  "checks": [
+    {
+      "id": "CKV_AZURE_36",
+      "reason": "Denying all public access including trusted-service bypass is stronger for this private-endpoint-only design. Do not enable bypass to satisfy the generic check.",
+      "compensatingControl": "Private endpoints, managed identity, shared keys disabled, defaultAction Deny and bypass None",
+      "sourceSuppression": "Resource-local Checkov comment in modules/data.bicep"
+    },
+    {
+      "id": "CKV_AZURE_206",
+      "reason": "Owner approved single-region LRS, no HA or multi-region recovery commitment, within the subscription ceiling.",
+      "compensatingControl": "Private media storage, soft delete, authoritative PostgreSQL backup and required restore verification before public release",
+      "sourceSuppression": "Resource-local Checkov comment in modules/data.bicep"
+    }
+  ],
+  "armScan": "Bicep comments do not survive compilation. ARM scan must first pass scripts/validate_template.py, then skip only these exact two IDs. Never skip all Azure checks or apply the exception to new storage accounts.",
+  "limitations": "Static scans do not certify live RBAC, networking, restore, image contents, runtime health or an exact spending cap."
+}

@@ -12,8 +12,9 @@ from dataclasses import asdict, dataclass
 from typing import Literal
 
 from tactiq.agents.commentary import CommentaryTurn
-from tactiq.agents.narrative import DeterministicNarrativeGenerator, FoundryNarrativeGenerator
+from tactiq.agents.narrative import DUAL_COMMENTARY_TOKEN_BOUND, DeterministicNarrativeGenerator, FoundryNarrativeGenerator
 from tactiq.agents.speech import AzureSpeechSynthesizer
+from tactiq.agents.usage import capture_model_usage
 from tactiq.domain.models import Insight
 
 from .access import AccessDenied, AccessStore, UsageIntent, UsagePolicy
@@ -99,7 +100,7 @@ class CloudGeneration:
                           "provider": "foundry-with-deterministic-fallback" if model_ready else "deterministic"},
             "speech": {**speech, "configured": bool(speech_ready)},
             "provider_health_verified": False,
-            "usage_accounting": "conservative-reservations" if self.settings.active() else "disabled",
+            "usage_accounting": "reserved-with-verified-model-settlement" if self.settings.active() else "disabled",
         }
 
     def _reserve(self, proof: str, operation: str, meter: Literal["model_tokens", "speech_characters"], units: int):
@@ -127,24 +128,45 @@ class CloudGeneration:
         if cached is not None:
             return cached
         if paid:
-            # UTF-8 input/profile bounds plus at most two bounded completions are
-            # below this deliberately conservative token allowance.
-            reservation = self._reserve(proof, operation, "model_tokens", 524_288)
+            # Each role has <=64,000 serialized UTF-8 input bytes (including
+            # profiles/schema/handoff), <=1,100 completion tokens and a
+            # 4,096-token tool-free envelope; one byte bounds one input token.
+            # No tools, history, repair loop or paid transport retries are used.
+            units = DUAL_COMMENTARY_TOKEN_BOUND if kind == "dual" else FoundryNarrativeGenerator.single_request_token_bound(
+                insight, audience, language, player,
+            )
+            reservation = self._reserve(proof, operation, "model_tokens", units)
             if reservation.replayed:
                 raise GenerationUnavailable("Generation is in progress or its outcome is uncertain; no paid retry was made")
         generator = self.narrative if paid else self.fallback
-        if kind == "dual":
-            generated = generator.generate_dual_commentary(insight, language)
-        else:
-            generated = generator.generate(insight, audience, language, player)
+        with capture_model_usage() as usage:
+            if kind == "dual":
+                generated = generator.generate_dual_commentary(insight, language)
+            else:
+                generated = generator.generate(insight, audience, language, player)
         result = asdict(generated)
         if kind == "dual":
             result["turns"] = [turn.model_dump() for turn in generated.turns]
         result["script_id"] = _identity({"match": match, "kind": kind, "result": result})
         result = self.store.save_script(tenant, match, result["script_id"], {"kind": kind, **result})
         self.store.save_generation_result(tenant, match, operation, result)
-        # Leave the worst-case reservation intact: the provider abstraction does
-        # not expose trustworthy billing usage, including on timeouts/fallbacks.
+        if paid:
+            actual = usage.complete(2 if kind == "dual" else 1)
+            if (not generated.fallback_used and generated.provider in {"foundry", "foundry-agent-framework"}
+                    and actual is not None):
+                cost = (actual.total_tokens * self.settings.model_price + 999_999) // 1_000_000
+                if actual.total_tokens > reservation.units or cost > reservation.maximum_cost_microusd:
+                    logger.error("cloud_model_usage_exceeded_reservation")
+                    raise GenerationUnavailable("Provider usage exceeded the approved reservation; review billing")
+                # Durability precedes settlement; a crash can strand a reservation
+                # but can never refund an ambiguous call or repeat a paid call.
+                self.access.settle_usage(proof, reservation.reservation_id, actual.total_tokens, cost)
+                logger.info("cloud_model_usage_settled", extra={
+                    "input_tokens": actual.input_tokens, "output_tokens": actual.output_tokens,
+                    "cost_microusd": cost,
+                })
+            else:
+                logger.warning("cloud_model_usage_uncertain_reservation_retained")
         return result
 
     def synthesize(self, proof: str, tenant: str, match: str, script_id: str, *, dual: bool) -> dict:

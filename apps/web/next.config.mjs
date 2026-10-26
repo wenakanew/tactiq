@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  experimental: {
+    proxyTimeout: 180_000,
+  },
   env: {
     NEXT_PUBLIC_API_BASE_URL: process.env.TACTIQ_BACKEND_URL ? "" : process.env.NEXT_PUBLIC_API_BASE_URL || "",
   },
