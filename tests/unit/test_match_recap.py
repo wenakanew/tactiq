@@ -1,5 +1,5 @@
 from tactiq.application.service import MatchService
-from tactiq.domain.models import EvidenceItem, Insight, MatchState
+from tactiq.domain.models import Event, EvidenceItem, Insight, MatchState
 
 
 def _insight(match_id: str, title: str, confidence: float, team_id: str = "team_a") -> Insight:
@@ -15,6 +15,7 @@ def _insight(match_id: str, title: str, confidence: float, team_id: str = "team_
         summary=f"{title} detected.",
         evidence=[
             EvidenceItem(metric="metric_a", value=1, unit="count", supporting_event_ids=["e1"]),
+            EvidenceItem(metric="metric_b", value=2, unit="count", supporting_event_ids=["e2"]),
         ],
     )
 
@@ -39,6 +40,11 @@ def test_generate_recap_returns_top_insights() -> None:
         _insight(match_id, "Pressure Building", 0.70),
         _insight(match_id, "Momentum Shift", 0.93),
         _insight(match_id, "Player Influence Rising", 0.84),
+    ]
+    service.events[match_id] = [
+        Event(event_id=f"e{index}", match_id=match_id, sequence=index, match_clock_ms=60_000 + index,
+              type="pass_completed", team_id="team_a")
+        for index in (1, 2)
     ]
 
     recap, top, chapters = service.generate_recap(match_id=match_id, audience_mode="analyst", language="en-GB")

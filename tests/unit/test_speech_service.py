@@ -10,6 +10,7 @@ class _StubSpeech:
         voice: str | None = None,
         rate: str = "+2%",
         pitch: str = "+1st",
+        tenant_id: str = "local",
     ) -> SpeechResult:
         return SpeechResult(audio_base64="ZmFrZQ==", content_type="audio/mpeg", provider="azure-speech")
 
@@ -20,6 +21,7 @@ class _StubSpeech:
         language: str,
         primary_voice: str | None = None,
         secondary_voice: str | None = None,
+        tenant_id: str = "local",
     ) -> SpeechResult:
         return SpeechResult(audio_base64="ZHVv", content_type="audio/mpeg", provider="azure-speech-duo")
 
@@ -32,6 +34,7 @@ class _FailSpeech:
         voice: str | None = None,
         rate: str = "+2%",
         pitch: str = "+1st",
+        tenant_id: str = "local",
     ) -> SpeechResult:
         raise RuntimeError("Azure Speech is not configured")
 
@@ -42,6 +45,7 @@ class _FailSpeech:
         language: str,
         primary_voice: str | None = None,
         secondary_voice: str | None = None,
+        tenant_id: str = "local",
     ) -> SpeechResult:
         raise RuntimeError("Azure Speech is not configured")
 

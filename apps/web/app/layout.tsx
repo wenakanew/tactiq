@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "Tactiq — Match Intelligence | Premier League × Microsoft",
+  title: "Tactiq — Football, understood",
   description:
-    "Real-time agentic football intelligence: evidence-backed insights, dual AI commentary, and chaptered recaps. AI explains the game — it never makes up the game.",
+    "A different perspective on football. Explore supported match moments, tactical replay, personalized commentary, and the evidence behind the story.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

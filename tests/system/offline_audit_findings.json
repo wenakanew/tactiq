@@ -1,0 +1,306 @@
+{
+  "schema_version": "1.0",
+  "audit_mode": "offline/fixture",
+  "scope": "Historical offline endpoint findings plus post-repair verification; no live cloud calls in this suite",
+  "created_files": [
+    "tests\\system\\conftest.py",
+    "tests\\system\\test_endpoint_contracts.py",
+    "tests\\system\\test_narrative_speech_contracts.py",
+    "tests\\system\\test_video_media_job_contracts.py",
+    "tests\\system\\test_websocket_contracts.py",
+    "tests\\system\\offline_audit_findings.json"
+  ],
+  "snapshot": {
+    "status": "historical_baseline",
+    "tests": 404,
+    "passed": 384,
+    "failed": 20,
+    "skipped": 0,
+    "stable_contract_failure_reproductions": 18,
+    "bounded_fixture_budget_failures": 2,
+    "endpoint_cases": 1007,
+    "passing_endpoint_cases": 910,
+    "failing_endpoint_cases": 97,
+    "elapsed_pytest_seconds": 220.59,
+    "declared_http_operations": 36,
+    "declared_http_method_counts": {
+      "GET": 18,
+      "POST": 17,
+      "DELETE": 1
+    },
+    "websocket_operations": 1,
+    "coverage_complete": true,
+    "operations_without_passing_positive_case": [],
+    "blocked_external_io_attempts": 0,
+    "all_contracts_passed": false
+  },
+  "final_verification": {
+    "status": "passed",
+    "source": "combined-full-backend-suite",
+    "backend_tests": 721,
+    "unit_tests": 314,
+    "system_tests": 407,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed_pytest_seconds": 222.07,
+    "endpoint_cases": 799,
+    "passing_endpoint_cases": 799,
+    "failing_endpoint_cases": 0,
+    "declared_http_operations": 36,
+    "websocket_operations": 1,
+    "coverage_complete": true,
+    "blocked_external_io_attempts": 0,
+    "all_contracts_passed": true,
+    "artifacts": [
+      "endpoint-matrix.json",
+      "audit-all-python.xml"
+    ],
+    "fixture_corrections": [
+      "Invalid voice syntax now has the exact HTTP 422 request-model contract; identical voices and semantic prosody errors retain HTTP 400.",
+      "Job polling is bounded at 45 seconds and controlled worker waits at 30 seconds; functional assertions were not relaxed.",
+      "Each system case loads an isolated API module after configuring its environment, so prior unit-test imports cannot retain different CORS or upload-limit startup settings.",
+      "Generated scratch files are ignored and removed after verification."
+    ],
+    "note": "The snapshot, observations and timing failures below are historical reproductions, not unresolved final failures. Request-case totals include polling and therefore vary between full runs."
+  },
+  "commands": {
+    "full_audit_powershell": "$env:FOUNDRY_ENABLED='false'; $env:PYTHONDONTWRITEBYTECODE='1'; .\\.venv\\Scripts\\python.exe -B -m pytest tests\\system --basetemp=tests\\system\\.offline-audit-work -q --tb=no --show-capture=no -p no:cacheprovider",
+    "report": "Set TACTIQ_AUDIT_REPORT_PATH before running to write the sanitized machine-readable endpoint matrix.",
+    "lint": ".\\.venv\\Scripts\\python.exe -B -m ruff check tests\\system --output-format concise",
+    "focused_reproductions": "Append -k with a selector below. Focused runs intentionally do not claim complete endpoint coverage."
+  },
+  "matrix": {
+    "artifact_name": "endpoint-matrix.json",
+    "per_route_counts": "operations",
+    "per_request_assertions": "cases",
+    "sanitized_assertion_locations": "failures",
+    "note": "Case verdicts include the entire pytest test outcome. Setup requests and job polling inside a failing test are conservatively marked failed even when their HTTP status assertion passed."
+  },
+  "findings": [
+    {
+      "id": "session-bearer-scheme-case",
+      "status": "fixed-and-verified",
+      "classification": "confirmed-contract-bug",
+      "priority": "medium",
+      "failing_tests": 3,
+      "operations": [
+        "POST /api/v1/session"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::establish_session",
+      "pytest_selector": "test_session_exchange_accepts_case_insensitive_bearer_scheme",
+      "minimal_reproduction": [
+        "Use a valid test-only credential with a lowercase, uppercase, or mixed-case bearer authentication scheme.",
+        "Exchange that credential for a browser session."
+      ],
+      "expected": "HTTP 200 for a valid credential; authentication schemes are case-insensitive.",
+      "observed": "HTTP 401 even though the shared authenticator already accepted the credential.",
+      "suggested_fix": "Parse the authorization scheme case-insensitively and reuse the validated principal while preserving header-over-cookie precedence.",
+      "fixture_provenance": "offline/fixture authentication digests and real TestClient lifespan"
+    },
+    {
+      "id": "malformed-resource-identifiers-500",
+      "status": "fixed-and-verified",
+      "classification": "confirmed-validation-bug",
+      "priority": "medium",
+      "failing_tests": 6,
+      "operations": [
+        "GET /api/v1/matches/{match_id}/state",
+        "GET /api/v1/jobs/{job_id}",
+        "POST /api/v1/jobs/{job_id}/cancel"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::request_policy,get_job,cancel_job",
+      "pytest_selector": "test_malformed_identifiers_are_client_errors_not_server_errors",
+      "minimal_reproduction": [
+        "Authenticate with a valid test-only credential.",
+        "Supply a resource identifier beginning with whitespace, or one containing 257 characters."
+      ],
+      "expected": "A bounded client error: HTTP 400, 404, or 422.",
+      "observed": "HTTP 500 from uncaught runtime identifier validation.",
+      "suggested_fix": "Validate path identifiers before storage access and translate RecordValidationError into a client response without weakening unknown-ID tenant isolation.",
+      "fixture_provenance": "offline/fixture authentication and real isolated SQLite storage"
+    },
+    {
+      "id": "empty-insight-selection-ignored",
+      "status": "fixed-and-verified",
+      "classification": "strict-contract-finding",
+      "priority": "medium",
+      "failing_tests": 2,
+      "operations": [
+        "POST /api/v1/matches/{match_id}/narratives",
+        "POST /api/v1/matches/{match_id}/commentary/dual"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::NarrativeRequest,DualCommentaryRequest",
+      "pytest_selector": "test_explicit_empty_insight_id_does_not_silently_select_a_different_insight",
+      "minimal_reproduction": [
+        "Create and populate an isolated match with real scenario events.",
+        "Request narration or dual commentary with an explicitly empty insight identifier."
+      ],
+      "expected": "HTTP 400 or 422 for an explicitly invalid identifier.",
+      "observed": "HTTP 200; the empty selection silently becomes the latest insight.",
+      "suggested_fix": "Require a nonempty insight identifier when the optional field is supplied; retain omitted/null selection as the documented latest-insight behavior.",
+      "fixture_provenance": "offline/fixture real scenario insights and disabled Foundry fallback"
+    },
+    {
+      "id": "malformed-video-link-500",
+      "status": "fixed-and-verified",
+      "classification": "confirmed-validation-bug",
+      "priority": "medium",
+      "failing_tests": 1,
+      "operations": [
+        "POST /api/v1/video/from-link"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::create_from_video_link",
+      "pytest_selector": "test_link_input_validation_does_not_attempt_external_io and malformed-brackets",
+      "minimal_reproduction": [
+        "Submit a link containing an unmatched IPv6-host bracket.",
+        "No DNS lookup, socket, or download is needed."
+      ],
+      "expected": "HTTP 400 for a malformed URL.",
+      "observed": "HTTP 500 because urlparse raises before the handler's ValueError translation.",
+      "suggested_fix": "Perform URL parsing inside the validation try/except, or validate the link at the request-model boundary.",
+      "fixture_provenance": "offline/fixture malformed-link input with outbound network guards"
+    },
+    {
+      "id": "invalid-media-success-shaped-synthetic-analysis",
+      "status": "fixed-and-verified",
+      "classification": "suspicious-success-shape-requires-product-decision",
+      "priority": "high",
+      "failing_tests": 3,
+      "operations": [
+        "POST /api/v1/video/upload",
+        "POST /api/v1/video/from-link",
+        "POST /api/v1/video/jobs",
+        "GET /api/v1/jobs/{job_id}"
+      ],
+      "production_location": "services\\backend\\tactiq\\application\\service.py::_create_video_match",
+      "pytest_selector": "non_video",
+      "minimal_reproduction": [
+        "Supply nonempty bytes that are not a video container through upload or a fixture download.",
+        "For asynchronous processing, submit the same invalid media and poll the real durable job runner."
+      ],
+      "expected": "Synchronous HTTP 400, or an asynchronous failed job without a successful match result.",
+      "observed": "Synchronous HTTP 200 and asynchronous succeeded status with a completed synthetic match.",
+      "important_qualification": "The synthetic fallback is explicitly labelled. The finding is that invalid user media receives the success-shaped video-analysis contract, not that synthetic provenance is hidden.",
+      "suggested_fix": "Reject invalid video containers before match creation. Keep clearly labelled extraction fallbacks only for decodable video if that fallback remains an approved product feature.",
+      "fixture_provenance": "offline/fixture invalid bytes, fixture download, and real isolated durable jobs"
+    },
+    {
+      "id": "synthetic-fallback-replay-clock-drift",
+      "status": "fixed-and-verified",
+      "classification": "confirmed-playback-contract-bug",
+      "priority": "high",
+      "failing_tests": 1,
+      "operations": [
+        "POST /api/v1/video/upload",
+        "GET /api/v1/matches/{match_id}/replay"
+      ],
+      "production_location": "services\\backend\\tactiq\\application\\service.py::_create_video_match",
+      "pytest_selector": "test_unavailable_motion_fallback_is_labelled_and_stays_within_source_clock",
+      "minimal_reproduction": [
+        "Generate a 1.2-second MP4 locally.",
+        "Have the CV event-extraction adapter raise ValueError.",
+        "Read the replay for the resulting explicitly labelled synthetic fallback."
+      ],
+      "expected": "processed_until_ms and every replay frame timestamp are bounded by the playable source duration.",
+      "observed": {
+        "source_duration_ms": 1200,
+        "processed_until_ms_in_confirming_reproduction": 49460,
+        "qualification": "The exact synthetic timestamp varies with encoded fixture bytes."
+      },
+      "suggested_fix": "Do not attach unrelated synthetic scenario timestamps to real media. Reject unavailable analysis or explicitly produce a source-bounded fallback timeline.",
+      "fixture_provenance": "offline/fixture generated MP4, real FFmpeg normalization, and injected CV-adapter failure"
+    },
+    {
+      "id": "persisted-source-path-cross-match-ownership",
+      "status": "fixed-and-verified",
+      "classification": "ownership-invariant-failure-under-metadata-fault-injection",
+      "priority": "high",
+      "failing_tests": 1,
+      "operations": [
+        "GET /api/v1/matches/{match_id}/media/source"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::get_source_video",
+      "pytest_selector": "test_source_association_cannot_serve_another_tenants_media",
+      "minimal_reproduction": [
+        "Create a match in each of two isolated test tenants.",
+        "Fault-inject the first match's persisted video_source association to the second match's generated source file.",
+        "Evict and restore the first match, then request its source as its own tenant's viewer."
+      ],
+      "expected": "HTTP 404 for a source outside the requested match's media directory.",
+      "observed": "HTTP 200 serving the foreign match's media because only the global source root is checked.",
+      "important_qualification": "This requires corrupted or wrongly associated persisted metadata. Ordinary foreign-match HTTP and WebSocket requests are correctly denied by the tested authentication boundary.",
+      "suggested_fix": "Resolve the allowed source root as source_root / match_id and verify the file belongs to that match after symlink resolution.",
+      "fixture_provenance": "offline/fixture generated video, real SQLite restore, and explicit persisted-association fault injection"
+    },
+    {
+      "id": "clip-symlink-cross-match-ownership",
+      "status": "fixed-and-verified",
+      "classification": "ownership-invariant-failure-under-filesystem-fault-injection",
+      "priority": "high",
+      "failing_tests": 1,
+      "operations": [
+        "GET /media/{match_id}/{filename}"
+      ],
+      "production_location": "services\\backend\\tactiq\\presentation\\api\\main.py::get_clip",
+      "pytest_selector": "test_clip_symlink_cannot_escape_its_match_directory",
+      "minimal_reproduction": [
+        "Create isolated matches belonging to different tenants.",
+        "Place a test-only clip symlink in the first match's clip directory pointing to a generated clip in the other match's directory.",
+        "Mark the first clip association ready and request it as the first tenant."
+      ],
+      "expected": "HTTP 404 because the resolved file does not belong to the requested match.",
+      "observed": "HTTP 200 because the resolved path remains under the global clips root.",
+      "important_qualification": "This requires local filesystem manipulation, not a demonstrated ability for an API viewer to create symlinks. The fixture symlink is always removed.",
+      "suggested_fix": "Validate against clips_root / match_id after resolution and reject symlink media entries consistently with deletion policy.",
+      "fixture_provenance": "offline/fixture generated video and explicit isolated cross-match symlink"
+    }
+  ],
+  "historical_timing_budget_failures": [
+      {
+        "test": "tests\\system\\test_video_media_job_contracts.py::test_async_uploaded_analysis_has_durable_status_result_and_cleanup[events]",
+        "classification": "bounded-fixture-budget-failure-not-confirmed-production-regression",
+        "pytest_selector": "test_async_uploaded_analysis_has_durable_status_result_and_cleanup and events",
+        "expected": "The fixture job finishes within the 12-second polling budget.",
+        "observed": "Polling exceeded 12 seconds. Read-only inspection of the isolated database after lifespan shutdown showed the job succeeded in 15.36 seconds.",
+        "eventual_job_status": "succeeded",
+        "eventual_completion_seconds": 15.36,
+        "qualification": "No test was rerun and no timeout was relaxed. The preceding complete run passed this case.",
+        "unreached_assertions": "This case did not reach its replay/result/finished-cancel assertions; other fixtures still provide passing positive coverage for every declared operation."
+      },
+      {
+        "test": "tests\\system\\test_video_media_job_contracts.py::test_running_and_queued_job_cancellation_and_capacity_cleanup",
+        "classification": "bounded-fixture-budget-failure-not-confirmed-production-regression",
+        "pytest_selector": "test_running_and_queued_job_cancellation_and_capacity_cleanup",
+        "expected": "The worker reaches the controlled CV adapter within the five-second fixture wait.",
+        "observed": "The five-second wait expired before the adapter was reached. The finally block released the adapter; the isolated durable job subsequently succeeded in 9.39 seconds.",
+        "eventual_job_status": "succeeded",
+        "eventual_completion_seconds": 9.39,
+        "qualification": "No test was rerun and no timeout was relaxed. The preceding complete run passed queued/running cancellation and queue-capacity cleanup.",
+        "unreached_assertions": "The final run did not reach queued/running cancellation or queue-capacity rejection within this case."
+      }
+  ],
+  "verified_contract_areas": [
+    "All declared route/method pairs have exercised cases and passing positive cases.",
+    "Every declared HTTP operation has explicit anonymous admission; protected operations reject invalid credentials.",
+    "Viewer, analyst, administrator, wrong-tenant, and unknown-resource policies.",
+    "Secure cookie exchange, logout, verified Origin requirements, and header-over-cookie precedence.",
+    "Scenario start, idempotent start, pause, resume, completion, restart conflict, deletion, and lifespan cleanup.",
+    "Synchronous upload/link and asynchronous events/CV flows with generated video and explicit adapter fixtures.",
+    "Missing and invalid model setup, extractor failures, durable failure status, running/queued cancellation, and queue-capacity cleanup pass the repaired combined full suite.",
+    "Private source/clip retrieval, bounded/suffix/open/multiple byte ranges, malformed and unsatisfiable ranges, and If-Range behavior.",
+    "Overlays, persisted viewer profiles, real scenario insights, all seven narrative locales, audiences, guardrails, recaps, and commentary audit limits.",
+    "Missing Speech configuration, all seven fixture speech locales, SSML escaping, invalid voices/prosody, dual-voice composition, and provider faults.",
+    "Health, metrics, SLO status, Prometheus, body limits, request correlation, HTTP admission capacity, and request rate limits.",
+    "WebSocket state/insight snapshots, service broadcasts, cookie/bearer/origin admission, missing/foreign IDs, subscriber capacity, deletion pins, and disconnect cleanup.",
+    "Authenticated GET/HEAD documentation and schema plus CORS OPTIONS preflights.",
+    "Machine-report sanitization and explicit failure of incomplete operation coverage."
+  ],
+  "coverage_limitations": [
+    "No live Foundry, Azure Speech, external-video-host, or real CV model-quality validation was attempted.",
+    "Fixture credentials, adapter outputs, generated media, and metadata/filesystem faults are not evidence of real-match model quality or ordinary remote exploitability.",
+    "Durability is exercised through real SQLite and same-process cache restore, not process-crash or multi-host failover testing.",
+    "The historical baseline had two bounded fixture-budget failures; the corrected bounded fixtures now pass without relaxing functional assertions.",
+    "This checked-in summary preserves historical reproductions. The final machine matrix and JUnit artifacts record the authoritative passing combined run."
+  ]
+}
