@@ -2,11 +2,37 @@
 
 ### Football intelligence. Evidence before explanation.
 
-Football creates more events than a viewer can interpret. Tactiq connects passages of play to inspectable evidence, then makes that evidence understandable through personalized stories, synchronized replay, and optional spoken commentary.
+**Tactiq turns football's "what just happened?" into "here's why it mattered."** Built for Microsoft's Inside the Game hackathon, it brings evidence-linked tactical insights, synchronized replay and AI commentary into one workspace for fans, analysts and players.
 
-**Ingest → Interpret → Explain → Render → Personalize**
+Match footage shows the action, but understanding pressure, movement and turning points takes time and specialist knowledge. Tactiq connects those moments to inspectable evidence, then explains the same underlying facts at the depth and in the language each viewer needs.
+
+**The pitch:** watch the moment, inspect the evidence, understand the game.
 
 [Explore the product](docs/product/user-guide.md) · [Architecture](docs/architecture/overview.md) · [Demo guide](docs/submission/demo-guide.md) · [Documentation](docs/README.md)
+
+## What it does
+
+**Ingest → Interpret → Explain → Replay → Personalize**
+
+Start with a reproducible synthetic match or authorized football video. Tactiq builds match state, detects evidence-backed tactical moments and pairs them with narratives, source clips and pitch replay. Switch between fan-friendly explanations, analyst detail and selected-player focus, with seven text locales and optional spoken lead/analyst commentary.
+
+AI explains the evidence; it does not invent the statistics. Synthetic data, missing observations and provider fallbacks stay visible.
+
+## Built with Microsoft and Azure
+
+| Technology | Role in Tactiq |
+| --- | --- |
+| **Microsoft Foundry** | Generates grounded narratives from structured football evidence through the isolated `tactiq-commentary` model deployment. |
+| **Microsoft Agent Framework** | Coordinates an ordered lead/analyst exchange for two-perspective commentary. |
+| **Azure AI Speech** | Turns the commentary into ordered dual-voice audio. |
+| **Microsoft identity platform / Microsoft Entra ID** | Provides the certificate-backed Microsoft account sign-in integration; interactive sign-in remains unverified. |
+| **Azure Container Apps and Container Apps Jobs** | Hosts the Next.js frontend, internal FastAPI backend and bounded background analysis jobs. |
+| **Azure Service Bus** | Connects durable dispatch and analysis workers through an authenticated queue. |
+| **Azure Blob Storage, Key Vault and managed identities** | Keeps media private, supplies runtime secrets and scopes service access without embedding credentials in images. |
+| **Azure Virtual Machines, Virtual Network and Private DNS** | Runs the private PostgreSQL 17 fallback and private data-service connectivity. |
+| **Azure Container Registry and Azure Monitor / Log Analytics** | Delivers immutable application images and centralizes runtime logs. |
+
+The application combines a Next.js/React experience with Python/FastAPI, deterministic football intelligence and local ONNX video tracking. PostgreSQL runs on an Azure VM in this pilot, **not** Azure Database for PostgreSQL.
 
 ## Live Azure pilot
 
@@ -19,6 +45,12 @@ The public UI is connected to the private API, PostgreSQL, private storage and d
 [Watch the live Azure workspace recording](docs/assets/production/workspace-live.webm) · [Listen to Azure dual-voice commentary](docs/assets/production/commentary-live.mp3) · [Inspect genuine Foundry output](docs/assets/production/foundry-commentary.json)
 
 The [release record](docs/azure/deployment.md) distinguishes verified behavior from configured integrations, provider fallbacks and remaining qualifications. Screenshots are real production captures of labelled synthetic data, not football-accuracy claims.
+
+### Azure resource map
+
+[![Azure resource visualizer for the Tactiq production resource group](docs/assets/production/azure-resource-visualizer.png)](docs/assets/production/azure-resource-visualizer.png)
+
+Owner-supplied Azure resource-visualizer snapshot for `rg-tactiq-prod-3e4d`; open the image to zoom. It includes historical bootstrap/managed-database nodes, not just the final running topology. See the [deployment architecture and resource map](docs/azure/deployment.md#azure-resource-visualizer) for current components and shared services.
 
 ## One match, different perspectives
 

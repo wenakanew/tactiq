@@ -4,6 +4,14 @@
 
 **Connected Azure pilot, 2026-10-26.** Open the [live workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) or [landing page](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io). The public frontend now reaches the real internal API, private PostgreSQL, private media storage and durable cloud workers. This supersedes the earlier frontend-only deployment and missing-API 404 diagnosis. It is a budget-limited hackathon pilot, not an HA service or a certified production-readiness result.
 
+## Azure resource visualizer
+
+[![Azure resource visualizer for rg-tactiq-prod-3e4d](../assets/production/azure-resource-visualizer.png)](../assets/production/azure-resource-visualizer.png)
+
+Owner-supplied Azure resource-visualizer snapshot of the Tactiq production resource group, added on 2026-10-26. **Open the full-resolution image to zoom into resource names and connections.** It documents the resource-group topology at capture time, not a live health check, deployment sequence or complete dependency inventory. Shared Foundry, Speech and registry resources are described separately below; the image does not replace the deployment table or runtime evidence.
+
+The snapshot still includes the temporary bootstrap job and a managed PostgreSQL node. The bootstrap job was subsequently retired, and the managed database allocation failed; the running database is the private PostgreSQL VM fallback described below. These diagram nodes do not establish that those earlier resources are active.
+
 ## Visible production evidence
 
 These screenshots came from the actual public Azure workspace, with no mocked network routes. The match is a **labelled synthetic scenario**, not real football footage.
