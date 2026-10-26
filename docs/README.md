@@ -12,7 +12,7 @@
 | Integrate or configure | [API](reference/api.md) · [Configuration](reference/configuration.md) |
 | Assess cloud readiness | [Deployment status](azure/deployment.md) · [Costs](azure/costs.md) |
 | Operate responsibly | [Runbook](operations/runbook.md) · [Privacy and security](operations/privacy-and-security.md) |
-| Review the submission | [Judging evidence map](submission/judging-guide.md) |
+| Review the submission | [Challenge, categories, rules and judging evidence](submission/judging-guide.md) · [Submission description](submission/project-description.md) · [Judge testing](submission/demo-guide.md#free-local-judge-testing) |
 | Check reuse rights | [License](../LICENSE) · [Third-party notices](reference/third-party-notices.md) |
 
 ## Status vocabulary
@@ -21,4 +21,4 @@
 - **Planned / in progress:** approved direction or partial work, not proof of integrated production behavior.
 - **Verified release:** requires dated, reproducible evidence against an identified release and deployment.
 
-Azure/Entra/Agent Framework target work is **planned / in progress**. No public cloud cutover is documented as complete. See the [release gates](azure/deployment.md#release-gates) before treating local results as deployment evidence.
+A connected Azure pilot and genuine Foundry/Agent Framework/Speech checks are documented in the [dated release record](azure/deployment.md). The local reference remains the credential-free synthetic test path. Interactive Microsoft sign-in, production video accuracy, sustained capacity and full production-readiness certification remain unverified. Local tests, actual provider receipts and deployed behavior are distinct evidence scopes.

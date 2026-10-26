@@ -8,15 +8,31 @@ Match footage shows the action, but understanding pressure, movement and turning
 
 **The pitch:** watch the moment, inspect the evidence, understand the game.
 
-[Explore the product](docs/product/user-guide.md) · [Architecture](docs/architecture/overview.md) · [Demo guide](docs/submission/demo-guide.md) · [Documentation](docs/README.md)
+[Explore the product](docs/product/user-guide.md) · [Watch the 1:55 pitch](https://youtu.be/ktO6Mbmkhy4) · [Judging and rules map](docs/submission/judging-guide.md) · [Documentation](docs/README.md)
 
 ## What it does
 
-**Ingest → Interpret → Explain → Replay → Personalize**
+**Ingest → Interpret → Explain → Render → Personalize**
 
 Start with a reproducible synthetic match or authorized football video. Tactiq builds match state, detects evidence-backed tactical moments and pairs them with narratives, source clips and pitch replay. Switch between fan-friendly explanations, analyst detail and selected-player focus, with seven text locales and optional spoken lead/analyst commentary.
 
 AI explains the evidence; it does not invent the statistics. Synthetic data, missing observations and provider fallbacks stay visible.
+
+## Inside the Game: challenge and category fit
+
+The submission follows the **Microsoft Premier League Hackathon** challenge: transform synthetic football events into explainable match intelligence, narratives and automated recaps for personalized viewing. Tactiq's challenge path uses its own seeded, football-realistic scenarios, not scraped league data or required broadcast footage.
+
+| Required stage | What a judge can inspect |
+| --- | --- |
+| **Ingest** | Versioned synthetic events and player/ball trajectories with reproducible seeds and timestamps. |
+| **Interpret** | Match state, pressure, rhythm, influence, transitions and supporting evidence windows. |
+| **Explain** | Grounded Foundry narratives and validated lead/analyst handoffs; disclosed deterministic fallback. |
+| **Render** | Match/moments/story workspace, synchronized replay, timed insights and JSON/CSV exports. This is not a certified broadcast-overlay integration. |
+| **Personalize** | Fan, Analyst and evidence-supported Player perspectives, seven text locales and optional speech. |
+
+**Prize positioning:** a complete-pipeline case for the Grand Prize, with the strongest category evidence for **Best Azure Cloud Native Integration** and **Best Use of Microsoft Foundry Project**. The verified Agent Framework handoff also supports **Best Multi-Agent System Prize** consideration. Enterprise controls show an adoption path, not enterprise certification. Categories are complementary, not an automatic fallback ladder: the supplied rules permit at most one Grand Prize and one Category Prize, and judges may reassign categories.
+
+**Judge access:** use the [free, credential-free local synthetic test instructions](docs/submission/demo-guide.md#free-local-judge-testing) for repeatable testing. The hosted pilot below has cold starts, admission and spending limits; it is **not unrestricted judge access**. The [rules checklist](docs/submission/judging-guide.md#submission-and-eligibility-checklist) records remaining entrant attestations, rights review and judging-period availability requirements.
 
 ## Built with Microsoft and Azure
 

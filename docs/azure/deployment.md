@@ -4,6 +4,12 @@
 
 **Connected Azure pilot, 2026-10-26.** Open the [live workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) or [landing page](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io). The public frontend now reaches the real internal API, private PostgreSQL, private media storage and durable cloud workers. This supersedes the earlier frontend-only deployment and missing-API 404 diagnosis. It is a budget-limited hackathon pilot, not an HA service or a certified production-readiness result.
 
+## Hackathon demonstration and access
+
+The submission's primary data path is project-generated synthetic football events. The [challenge/category/judging map](../submission/judging-guide.md) connects the five required stages and Microsoft/Azure integrations to actual evidence. [Watch the entrant-supplied 1:55 pitch](https://youtu.be/ktO6Mbmkhy4); its local-browser footage and separately verified Azure audio have different scopes.
+
+The hosted pilot's global admission cap, guest ownership/expiry, cold starts and fixed AI allocation are intentional budget controls. **Do not describe this endpoint as unrestricted judge access.** The [free local judge test](../submission/demo-guide.md#free-local-judge-testing) provides repeatable synthetic analysis/replay/recaps without provider keys or the cloud cap, but does not provide free live Azure inference. The entrant must confirm the complete offered testing route and availability through November 10, 2026 at 11:59 pm Pacific, including any separately required AI access. No quota, ownership, paid allocation or deployment setting was changed for this documentation review.
+
 ## Azure resource visualizer
 
 [![Azure resource visualizer for rg-tactiq-prod-3e4d](../assets/production/azure-resource-visualizer.png)](../assets/production/azure-resource-visualizer.png)

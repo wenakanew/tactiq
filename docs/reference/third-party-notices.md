@@ -15,6 +15,14 @@ The root MIT license covers original Tactiq source. It does not relicense depend
 
 Generated media and prior tracked football footage were removed from the release tree after exact-file preservation. Copies may remain in Git history; removal is not proof that earlier publication was licensed or erased.
 
+## Hackathon data and demonstration
+
+The challenge demonstration uses Tactiq's own labelled, seeded synthetic football events and generated player/ball trajectories. It does not require league footage, real player likenesses or a third-party football dataset. Optional video analysis is a separate capability: the entrant remains responsible for every clip's analysis, playback, publication and submission permissions.
+
+The local pitch combines actual application captures, synthetic scenes, offline Windows synthetic narration and an existing Azure Speech output. It uses no background music. This provenance does not establish all redistribution/submission rights: review voice/service terms, software captures, visible trademarks and any added material before publishing or submitting. The linked YouTube upload is supplied by the entrant; URL accessibility and duration do not constitute rights clearance.
+
+Confirm that permission covers the submission uses and promotion rights described in the Official Rules, not only private development. Review any earlier football-media history separately. See the [submission rights and eligibility checklist](../submission/judging-guide.md#submission-and-eligibility-checklist); the MIT license is not a substitute for these checks.
+
 ## Before distributing a release
 
 Review the actual dependency/image inventory and collect all required upstream license texts/notices for the artifacts being shipped. Record model and dataset provenance separately. This page is a rights boundary and checklist, not a completed SBOM, exhaustive license audit, or claim that third-party obligations have been discharged.

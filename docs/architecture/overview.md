@@ -48,8 +48,8 @@ The reference deployment is **single-host and single API process**. SQLite WAL p
 
 Jobs use bounded concurrency and at-least-once recovery with completed-operation reuse. Input/media ownership, stream pins, and exact-name pending-file cleanup protect persisted results. A network filesystem is not a substitute for a distributed design.
 
-## Approved cloud direction — not deployed
+## Connected Azure pilot
 
-The target separates web/API from queued analysis workers, replaces authoritative SQLite with PostgreSQL, stores private media in Blob, and uses Service Bus plus transactional outbox/leases. Microsoft identity, centralized guest quotas, shared usage reservations, and revision-based resynchronization belong to that migration.
+The deployed pilot separates web/API from queued analysis workers, replaces authoritative SQLite with private PostgreSQL 17 on an Azure VM, stores private media in Blob, and uses Service Bus plus transactional outbox/database leases. Container Apps/Jobs, Key Vault and managed identities connect these boundaries. The local reference remains a separate single-host runtime, not the cloud persistence authority.
 
-These are **planned/in progress**, not verified runtime guarantees. See [Azure status and gates](../azure/deployment.md). No region, production engine/SKU, public URL, or enterprise SLA is asserted here.
+Cloud synthetic analysis, private media, genuine Foundry/Agent Framework/Speech and an isolated backup restore have scoped release evidence. Microsoft identity configuration/redirect does not prove completed interactive sign-in; quotas do not establish unrestricted judge testing. See the [dated Azure release](../azure/deployment.md) and [free local judge path](../submission/demo-guide.md#free-local-judge-testing). No HA, broadcast latency, sustained-load capacity or enterprise SLA is claimed.

@@ -31,15 +31,15 @@ Model authentication/deployment/quota failures open a five-minute cooldown inste
 
 Only explicit user generation/Listen or playback commentary should trigger paid intent; page-load explanations use local templates. Configuration/capability responses are not provider-health checks.
 
-## Agent Framework target
+## Verified Agent Framework path
 
-Microsoft Agent Framework adoption is **in progress**, not a verified live release. The opt-in integration setting is `FOUNDRY_COMMENTARY_USE_AGENT_FRAMEWORK=true`, alongside existing Foundry enablement/project/deployment settings. The implementation work uses SDK `WorkflowBuilder` with distinct lead/analyst invocations, an immutable selected-moment snapshot, validated JSON handoff, and deterministic output gates.
+The deployed integration uses `FOUNDRY_COMMENTARY_USE_AGENT_FRAMEWORK=true`, alongside Foundry enablement/project/deployment settings. SDK `WorkflowBuilder` coordinates distinct lead/analyst invocations, an immutable selected-moment snapshot, validated JSON handoff, and deterministic output gates.
 
 The new path uses locally configured versioned role profiles or versioned built-in instructions, not fetched hosted profile versions or managed agent sessions. Its audit identifies `foundry-agent-framework` / `microsoft-agent-framework`, SDK/profile metadata, request correlation, and a redacted handoff trace. Missing dependencies/provider failures must yield labelled deterministic fallback, not silently claim legacy execution as Framework success.
 
-The approved target preserves existing commentary contracts and grants no arbitrary cloud administration or cross-workspace data access. Offline integration tests and live target-model/staging evidence must be distinguished.
+The path preserves existing commentary contracts and grants no arbitrary cloud administration or cross-workspace data access. Offline integration tests and actual provider evidence remain distinct. The [published verification receipt](../assets/production/dual-commentary.json) records a real ordered `lead started → grounded/handoff → analyst started → grounded/assembly` trace with `provider="foundry-agent-framework"`, no fallback and trusted SDK usage. This was a management-plane check of existing synthetic evidence, not an authenticated original-browser owned-script round trip.
 
-Do not claim a verified deployed Framework workflow, hosted sessions, A2A, or live target-model success from an SDK dependency or offline fixture. The [judging guide](../submission/judging-guide.md) identifies the missing release evidence.
+The distinction is purposeful: the lead describes the observation, and the analyst explains its supported meaning using the validated lead and the same evidence boundary. Failed output/provider calls result in a disclosed deterministic fallback, not an unbounded agent repair loop. Budget reservations are not silently refunded after ambiguous calls. The receipt proves role coordination, not superiority over a single-agent baseline, hosted sessions, A2A, tool autonomy or complete failure-recovery acceptance. See the [category and judging map](../submission/judging-guide.md).
 
 ## Profile maintenance
 

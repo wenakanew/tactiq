@@ -19,8 +19,10 @@ Never overwrite an existing `.env` or private `apps\web\.env.local`. For a crede
 
 ```powershell
 $env:APP_ENV="local"
+$env:TACTIQ_RUNTIME_MODE="local"
 $env:FOUNDRY_ENABLED="false"
 $env:TACTIQ_AUTH_ENABLED="false"
+$env:TACTIQ_CV_DETECTOR="motion"
 $env:TACTIQ_MEDIA_DIR=".artifacts\local-media"
 $env:TACTIQ_DATABASE_PATH=".artifacts\local.sqlite3"
 .\.venv\Scripts\python.exe -m uvicorn tactiq.presentation.api.main:app --app-dir services\backend --env-file .env --host 127.0.0.1 --port 8765
@@ -40,6 +42,8 @@ npm run dev
 
 Open `http://localhost:3000` or `/workspace`. The backend exposes `/health/live`, `/health/ready`, and `/docs`. `TACTIQ_BACKEND_URL` enables the same-origin HTTP/media/WebSocket proxy. Use `NEXT_PUBLIC_API_BASE_URL` only for an intentional direct-origin deployment. Restart/rebuild Next after changing these settings.
 
+For a fresh clone with **no provider keys or `.env` file**, use the [free local judge instructions](../submission/demo-guide.md#free-local-judge-testing). They explicitly disable paid generation and bind the unauthenticated service to loopback. That synthetic reference path is separate from the capped hosted pilot and genuine Azure provider checks.
+
 ## Optional real video
 
 Supply a separately licensed ONNX artifact outside Git. The application does not download weights. Configure the detector path/format/classes as described in [configuration](../reference/configuration.md#video-and-cv); a missing detector makes CV fail explicitly. Use synthetic scenarios when no model is available.
@@ -48,6 +52,6 @@ For physical pitch views, supply measured image/field correspondences for the ac
 
 ## Packaging
 
-[Backend Dockerfile](../../Dockerfile), [web Dockerfile](../../apps/web/Dockerfile), and [Compose](../../compose.yml) package the single-host reference, not a completed cloud migration. Compose defaults to local mode. Review private volumes, secrets, origin/auth settings, and the [runbook](../operations/runbook.md) before use beyond loopback.
+[Backend Dockerfile](../../Dockerfile), [web Dockerfile](../../apps/web/Dockerfile), and [Compose](../../compose.yml) support the single-host reference. Compose defaults to local mode; it does not recreate the private Azure topology. Review private volumes, secrets, origin/auth settings, and the [runbook](../operations/runbook.md) before use beyond loopback.
 
-The current Windows environment cannot validate Docker/Podman images. Linux image/runtime verification remains a release gate, not an inferred success.
+The Azure release built Linux images through ACR and deployed identified digests; [deployment evidence](../azure/deployment.md#immutable-deployed-images) records their scope. That does not establish Docker/Podman availability on a judge's machine or enterprise readiness.
