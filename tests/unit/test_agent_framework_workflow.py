@@ -24,7 +24,7 @@ def moment(depth="broadcast"):
                   for name, value in (("progressive_actions", 6), ("final_third_entries", 3), ("shots", 1))],
         context={"depth": depth, "data_source": "synthetic", "raw_footage": "secret.mp4",
                  "media_url": "https://private.invalid/video", "phase_events": [
-                     {"type": "pass_completed", "event_id": "e1", "raw_frame": "PRIVATE"}]},
+                     {"type": "pass_completed", "event_id": "e1", "match_clock_ms": 1000, "raw_frame": "PRIVATE"}]},
     )
 
 
@@ -157,7 +157,15 @@ def test_framework_request_bound_counts_schema_instructions_and_unicode_expansio
 
 @pytest.mark.parametrize("language", ["en-GB", "sw-KE", "fr-FR", "es-ES", "pt-BR", "ar-SA", "hi-IN"])
 def test_all_existing_locales_reach_both_agents_without_changing_contract(language):
-    client = OfflineClient([role(), role()])
+    from tactiq.agents.commentary import deterministic_turns
+
+    turns = deterministic_turns(moment(), language)
+    lead, analyst = role(turns[0].text), role(turns[1].text)
+    analyst["claims"] = [
+        {"metric": item.metric, "value": item.value, "supporting_event_ids": item.supporting_event_ids}
+        for item in moment().evidence
+    ]
+    client = OfflineClient([lead, analyst])
     result = run(client, language=language)
     for messages, _ in client.calls:
         assert f'"language": "{language}"' in "\n".join(message.text for message in messages)

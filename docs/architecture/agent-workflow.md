@@ -23,6 +23,16 @@ The established path performs bounded lead/analyst model calls with validated ou
 
 Number/entity/evidence validation rejects unsupported structured claims and player attribution. It does not constitute a complete semantic hallucination detector. Sparse evidence produces a shorter explanation, not fabricated depth. An explicit overview describes observations and limits instead of inventing a tactical verdict.
 
+### Timestamp and locale boundary repairs
+
+The service now preserves canonical `match_clock_ms` when building `phase_events`. Previously it stripped timestamps while the Framework snapshot defaulted missing values to the window start. The snapshot now accepts only actual integer timestamps, excluding booleans, strings, floats, non-finite values, negatives and missing/null values. Both window boundaries are inclusive. Malformed individual events are omitted with a count-only warning; an invalid collection is rejected before any model call. Filtering precedes the last-eight-event bound, retaining valid ordering. Valid metrics may still support commentary when optional sequence events are omitted.
+
+Canonical `Event` timestamps are required and nonnegative, but Pydantic also normalizes some inputs, including numeric strings, integral floats and booleans. Arbitrary context dictionaries do not receive that normalization. The repair deliberately changes the context boundary, not the existing ingestion schema.
+
+Structured metric/value/event-reference and entity checks run before localized prose checks. **Non-English generated prose is now conservative:** only exact evidence-derived localized fragments from the existing domain templates, plus canonical digit/metric statements backed by validated claims, pass. Other wording is explicitly unverified and triggers the established deterministic localized fallback. This includes some factually valid translations or number words; the system does not call them semantically false. Fallback metadata identifies `unverified-localized-prose` where applicable. Seven locale choices remain available, but unrestricted non-English model wording is intentionally no longer treated as verified.
+
+English retains its existing bounded numeric/entity/scope checks, not a general semantic proof. The multilingual fixtures have not had independent fluent review. [Reproduction and verification details](../development/judge-experience.md) distinguish canonical arithmetic checks, conservative rejection and real linguistic accuracy.
+
 Broadcast and deep responses retain legacy primary/secondary fields and add ordered `turns`. Supported deep responses target four to six alternating turns and 120–180 words. Ordered Speech renders configured voices in one multi-voice SSML request; the legacy text-pair API uses FFmpeg composition.
 
 ## Failure and cost boundaries

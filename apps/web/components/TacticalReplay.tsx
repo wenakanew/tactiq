@@ -25,6 +25,7 @@ type Props = {
   onPlayback?: (state: PlaybackSnapshot) => void;
   onInteraction?: (reason: PlaybackInteraction) => void;
   paginated?: boolean;
+  preparedPayload?: ReplayPayload;
 };
 
 function clock(value: number): string {
@@ -34,8 +35,8 @@ function clock(value: number): string {
 
 const EMPTY_TRACKING: TrackingSnapshot = { players: [], ball: null };
 
-export default forwardRef<ReplayControls, Props>(function TacticalReplay({ matchId, status, selectedPlayer, onSelectPlayer, liveTracking, liveClockMs, seekRequest, onSelectInsight, showWarnings = true, onReturnToCurrent, onPlayback, onInteraction, paginated = false }, ref) {
-  const [payload, setPayload] = useState<ReplayPayload | null>(null);
+export default forwardRef<ReplayControls, Props>(function TacticalReplay({ matchId, status, selectedPlayer, onSelectPlayer, liveTracking, liveClockMs, seekRequest, onSelectInsight, showWarnings = true, onReturnToCurrent, onPlayback, onInteraction, paginated = false, preparedPayload }, ref) {
+  const [payload, setPayload] = useState<ReplayPayload | null>(preparedPayload ?? null);
   const [error, setError] = useState("");
   const [timeMs, setTimeMs] = useState(0);
   const [view, setView] = useState<"2d" | "3d">("2d");
@@ -69,6 +70,19 @@ export default forwardRef<ReplayControls, Props>(function TacticalReplay({ match
   latestPayload.current = payload;
 
   useEffect(() => {
+    if (preparedPayload) {
+      activeMatch.current = matchId;
+      setPayload(preparedPayload);
+      setError("");
+      setTimeMs(0);
+      setPlaying(false);
+      setFollowingCurrent(false);
+      pendingSeek.current = null;
+      cloudAfter.current = null;
+      return () => {
+        if (animation.current !== null) cancelAnimationFrame(animation.current);
+      };
+    }
     const controller = new AbortController();
     let fetching = false;
     if (activeMatch.current !== matchId) {
@@ -118,7 +132,7 @@ export default forwardRef<ReplayControls, Props>(function TacticalReplay({ match
       controller.abort();
       if (interval) clearInterval(interval);
     };
-  }, [matchId, status, paginated]);
+  }, [matchId, status, paginated, preparedPayload]);
 
   useEffect(() => {
     if (seekRequest) seek(seekRequest.timeMs);

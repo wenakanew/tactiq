@@ -585,3 +585,15 @@ code { padding: 2px 5px; border: 1px solid var(--border); border-radius: 3px; fo
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
+.example-page { padding-bottom: 32px; }
+.example-page h1 { margin: 24px 0; }
+.example-preferences { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; margin: 24px 0; }
+.example-preferences label { display: flex; gap: 12px; align-items: center; }
+.example-match-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 20px; }
+.example-match-grid > * { min-width: 0; }
+.example-recap { padding: 24px 0; border-top: 1px solid var(--border, #30453a); overflow-wrap: anywhere; }
+.example-recap p { white-space: pre-line; }
+.example-recap audio { width: min(100%, 560px); }
+.example-chapters { display: flex; flex-wrap: wrap; gap: 12px; }
+.example-page .sheet-section { overflow-wrap: anywhere; }
+@media (max-width: 900px) { .example-match-grid { grid-template-columns: minmax(0, 1fr); } }

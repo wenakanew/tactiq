@@ -33,6 +33,14 @@ The workspace connects **The match**, **Moments** and **The story**:
 
 The submission demonstration uses **our own labelled, football-realistic synthetic scenarios**. No external match footage is required to reproduce the core experience.
 
+### Experience it without waiting for a new analysis
+
+This revision adds **Explore an example match** at `/example`: a deliberately public synthetic package produced through the same engine and rendered by the real replay and evidence components. Visitors can play and seek, select moments, compare Fan and Analyst, change among seven locales, inspect provenance and read a recap without signing in or starting a job.
+
+The selected match's explanations are **prepared deterministic domain templates**, not live or pre-generated Foundry output. Its matching English Fan narration was synthesized offline. A separate, clearly labelled Azure recording demonstrates an earlier genuine lead/analyst exchange about a different passage. Missing moment/locale audio is disclosed, not replaced with unrelated speech.
+
+The new route is locally verified in this source revision; **the existing Azure pilot has not been updated by this PR**. [Frontend-only instructions and walkthrough](demo-guide.md#immediate-prepared-example) and [measured evidence](../development/judge-experience.md) provide the reproducible test route.
+
 ## One pipeline, all five challenge stages
 
 | Stage | What Tactiq does | Why it matters |
@@ -52,6 +60,8 @@ A fluent answer is not necessarily a grounded answer.
 Tactiq separates deterministic football analysis from generated language. The analytical core establishes measurements and evidence windows. AI explains that context rather than becoming the authority for match statistics.
 
 Grounding checks constrain structured numbers, entities and output shape. They are useful safeguards, not a claim of perfect semantic verification. Provider failures produce disclosed deterministic fallbacks rather than being presented as successful model output.
+
+This revision also repairs missing timestamps in agent context and tests equivalent unsupported claim categories across all seven locales. Non-English free-form model wording outside evidence-derived renderings is now explicitly unverified and uses localized deterministic fallback, including some valid wording that the checker cannot establish. English checks remain incomplete; neither the fixtures nor the templates constitute independent fluent-language or real-football validation.
 
 Missing observations stay missing. Synthetic positions stay labelled. Uncalibrated pixels are not described as metres, and simulated speed fields are not marketed as validated real-video measurements.
 

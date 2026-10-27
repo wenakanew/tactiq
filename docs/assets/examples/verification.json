@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-27",
+  "scope": "Local production bundle and offline regression checks; no Azure deployment or paid provider requests",
+  "first_load": {
+    "milliseconds": 1784,
+    "target_ms": 5000,
+    "server": "local production build, warm process",
+    "browser": "Chromium, empty browser cache",
+    "connection": "20 Mbps down / 5 Mbps up, 50 ms added latency, no CPU throttling",
+    "limitation": "One controlled run; not an Azure cold-start or mobile-network guarantee"
+  },
+  "browser": {
+    "full_suite_passed": 35,
+    "final_example_rerun_passed": 4,
+    "public_example_api_requests": 0,
+    "public_example_external_requests": 0,
+    "public_example_cookies": 0
+  },
+  "assets": {
+    "pressure-v1.json": {
+      "bytes": 1638431,
+      "sha256": "54320989d7ff01bf7dbafcc1e6e91a80bd63c1365e7c080f26d089fec4e5b019"
+    },
+    "pressure-en.wav": {
+      "bytes": 1887406,
+      "sha256": "c7860e9d985f17f1ebef11ff27a1c6431882d72427820307fe09a3b8d5659161",
+      "source": "offline Microsoft Zira Desktop, exact public Pressure Building / English / Fan narrative"
+    },
+    "azure-commentary.mp3": {
+      "bytes": 107280,
+      "sha256": "5ed0694469822e025fcf51b6cd6dbf027124b1b3284caa2106a499fade5f3994",
+      "source": "previously published Azure sample, different synthetic passage"
+    }
+  }
+}

@@ -12,6 +12,10 @@ class GroundingError(ValueError):
     pass
 
 
+class UnverifiedLocaleError(GroundingError):
+    """Free-form locale semantics cannot be established by the current checker."""
+
+
 class Claim(BaseModel):
     model_config = ConfigDict(extra="forbid")
     metric: str
@@ -48,6 +52,18 @@ def validate_text(text: str, insight: Insight, claims: list[Claim] | None = None
     for identifier in re.findall(r"\b(?:team_[a-z0-9_]+|[abpq]_\d+|(?:player|ball)_\d+)\b", text, re.IGNORECASE):
         if identifier not in allowed_entities:
             raise GroundingError("Generated response attributes an unsupported player or team")
+    for claim in claims or []:
+        matches = [item for item in insight.evidence if item.metric == claim.metric and _number(item.value) == _number(claim.value)]
+        if not matches or not any(set(claim.supporting_event_ids) <= set(item.supporting_event_ids) for item in matches):
+            raise GroundingError("Generated claim does not resolve to the supplied evidence")
+    if insight.context.get("language", "en-GB") != "en-GB":
+        checked = text
+        for entity in sorted(allowed_entities, key=len, reverse=True):
+            checked = checked.replace(entity, "")
+        if re.search(r"(?<![\w])[-+]?\d+(?:[.,]\d+)?(?![\w])", checked) and not claims:
+            raise GroundingError("Numerical statements must declare their evidence")
+        _validate_localized_rendering(text, insight, claims or [])
+        return
     if re.search(r"\b(?:entire match|whole match|all game|dominated the match|won the match|final score|sent off|injured|penalty awarded|world record)\b",
                  text, re.IGNORECASE):
         raise GroundingError("Generated response exceeds the supported temporal or event scope")
@@ -101,7 +117,31 @@ def validate_text(text: str, insight: Insight, claims: list[Claim] | None = None
                 raise GroundingError("Generated text assigns the wrong value to a metric")
     if numeric_tokens and not claims:
         raise GroundingError("Numerical statements must declare their evidence")
-    for claim in claims or []:
-        matches = [item for item in insight.evidence if item.metric == claim.metric and _number(item.value) == _number(claim.value)]
-        if not matches or not any(set(claim.supporting_event_ids) <= set(item.supporting_event_ids) for item in matches):
-            raise GroundingError("Generated claim does not resolve to the supplied evidence")
+
+
+def _validate_localized_rendering(text: str, insight: Insight, claims: list[Claim]) -> None:
+    # Exact evidence-derived fragments, not a translated number-word blacklist.
+    # Anything outside this bounded surface goes through the existing fallback.
+    from tactiq.agents.commentary import LABELS, METRICS, deterministic_turns, metric_text
+    from tactiq.agents.localization import localized_insight
+
+    language = insight.context["language"]
+    title, summary = localized_insight(insight, language)
+    fragments = {title, summary, metric_text(insight, language),
+                 *(turn.text for turn in deterministic_turns(insight, language))}
+    labels = dict(zip(METRICS, LABELS[language].split("|")))
+    for claim in claims:
+        label = labels.get(claim.metric, claim.metric)
+        value = format(_number(claim.value), "f")
+        fragments.update({f"{value} {label}", f"{label}: {value}"})
+
+    def normalized(value: str) -> str:
+        return " ".join(value.split())
+
+    remaining = normalized(text)
+    approved = sorted({normalized(item) for item in fragments if item.strip()}, key=len, reverse=True)
+    while remaining:
+        fragment = next((item for item in approved if remaining == item or remaining.startswith(item + " ")), None)
+        if fragment is None:
+            raise UnverifiedLocaleError("Localized free-form prose is unverified; use evidence-derived rendering")
+        remaining = remaining[len(fragment):].strip()

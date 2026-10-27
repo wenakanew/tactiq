@@ -50,7 +50,7 @@ export default defineConfig({
       },
     },
     {
-      command: `npm run ${production ? "start" : "dev"} -- --hostname 127.0.0.1 --port ${webPort}`,
+      command: `node "${join(web, "node_modules", "next", "dist", "bin", "next")}" ${production ? "start" : "dev"} --hostname 127.0.0.1 --port ${webPort}`,
       cwd: web,
       url: baseURL,
       timeout: 180_000,

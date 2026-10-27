@@ -1,5 +1,6 @@
 import { ArrowRight, FileVideo, FolderOpen, Loader2, Play, Upload, X } from "lucide-react";
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 export type EntryTab = "demo" | "video" | "saved";
 export type EntryPanelProps = {
@@ -110,6 +111,7 @@ export default function EntryPanel(props: EntryPanelProps) {
           </button>) : <div className="empty-state"><FolderOpen size={24} aria-hidden="true" /><p>No saved matches yet.</p><p className="status-line">{props.canAnalyze ? "Your completed scenarios and analyses will appear here." : "Matches shared with this workspace will appear here."}</p></div>}
         </div>
       )}
+      <Link href="/example" prefetch={false} className="btn btn--outline btn--block">Explore an example match</Link>
       {props.children ? <div className="entry-footer">{props.children}</div> : null}
     </section>
   );

@@ -71,6 +71,7 @@ def test_historical_explanations_never_receive_future_goals(tmp_path, monkeypatc
     service.insights[state.match_id] = [target]
     grounded = service._narration_target(state.match_id, target.insight_id, 1000, "deep")
     assert {item["type"] for item in grounded.context["phase_events"]} == {"recovery", "pass_completed"}
+    assert [item["match_clock_ms"] for item in grounded.context["phase_events"]] == [0, 1000]
     assert "goal" not in grounded.context["event_types"]
     assert {key for item in grounded.evidence for key in item.supporting_event_ids} <= {"e1", "e2"}
 

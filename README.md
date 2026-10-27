@@ -32,7 +32,11 @@ The submission follows the **Microsoft Premier League Hackathon** challenge: tra
 
 **Prize positioning:** a complete-pipeline case for the Grand Prize, with the strongest category evidence for **Best Azure Cloud Native Integration** and **Best Use of Microsoft Foundry Project**. The verified Agent Framework handoff also supports **Best Multi-Agent System Prize** consideration. Enterprise controls show an adoption path, not enterprise certification. Categories are complementary, not an automatic fallback ladder: the supplied rules permit at most one Grand Prize and one Category Prize, and judges may reassign categories.
 
-**Judge access:** use the [free, credential-free local synthetic test instructions](docs/submission/demo-guide.md#free-local-judge-testing) for repeatable testing. The hosted pilot below has cold starts, admission and spending limits; it is **not unrestricted judge access**. The [rules checklist](docs/submission/judging-guide.md#submission-and-eligibility-checklist) records remaining entrant attestations, rights review and judging-period availability requirements.
+**Judge access:** this revision adds **Explore an example match**, a public `/example` route with prepared replay, evidence, Fan/Analyst views, seven locales, recap and matching offline English narration. It needs no sign-in, analysis job, API request or new paid generation. Follow the [frontend-only example instructions](docs/submission/demo-guide.md#immediate-prepared-example). **This PR has not been deployed to Azure**; the hosted pilot below remains the earlier revision with cold starts and spending limits, not unrestricted judge access. The [rules checklist](docs/submission/judging-guide.md#submission-and-eligibility-checklist) records remaining entrant attestations and availability requirements.
+
+[![Actual local browser capture of the interactive synthetic example](docs/assets/examples/public-example.png)](docs/assets/examples/public-example.png)
+
+The selected match uses deterministic prepared explanations, not live model output. Its matching English narration was synthesized offline. A separately labelled recording demonstrates a different, previously verified Azure lead/analyst exchange. [Reproductions, measured access time and verification scope](docs/development/judge-experience.md) distinguish those artifacts.
 
 ## Built with Microsoft and Azure
 

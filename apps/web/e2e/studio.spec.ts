@@ -26,10 +26,10 @@ test("public landing is independent of the analysis service and never auto-start
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Understand the");
-  await expect(page.getByRole("link", { name: "Explore a match", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Explore an example match", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("landing-desktop.png"), fullPage: true });
   expect(requests).toEqual([]);
-  await page.getByRole("link", { name: "Explore a match", exact: true }).click();
+  await page.getByRole("link", { name: "Start a new analysis", exact: true }).click();
   await expect(page).toHaveURL(/\/workspace\?start=demo$/);
   await expect(page.getByRole("button", { name: "Start live scenario", exact: true })).toBeVisible();
   expect(requests.filter((request) => request.method !== "GET")).toEqual([]);
@@ -39,7 +39,7 @@ test("public landing is independent of the analysis service and never auto-start
 test("mobile landing keeps its primary actions visible without horizontal overflow", async ({ page }, info) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  const action = page.getByRole("link", { name: "Explore a match", exact: true });
+  const action = page.getByRole("link", { name: "Explore an example match", exact: true });
   await expect(action).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath("landing-mobile.png"), fullPage: true });
