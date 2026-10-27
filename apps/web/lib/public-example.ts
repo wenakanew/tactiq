@@ -39,11 +39,35 @@ function localized(value: unknown): boolean {
   });
 }
 
+function replayMetadata(value: unknown): boolean {
+  return object(value)
+    && ["notes", "detection_source"].every((key) => value[key] === undefined || typeof value[key] === "string")
+    && ["width", "height"].every((key) => value[key] === undefined
+      || (typeof value[key] === "number" && Number.isFinite(value[key]) && value[key] > 0))
+    && (value.warnings === undefined || (Array.isArray(value.warnings)
+      && value.warnings.every((warning) => typeof warning === "string")))
+    && (value.insights_truncated === undefined || typeof value.insights_truncated === "boolean");
+}
+
+function replayInsight(value: unknown): boolean {
+  if (!object(value) || typeof value.insight_id !== "string" || typeof value.title !== "string"
+    || !Number.isFinite(value.window_start_ms) || !Number.isFinite(value.window_end_ms)) return false;
+  if (value.provenance === undefined) return true;
+  return object(value.provenance) && (value.provenance.quality === undefined
+    || (object(value.provenance.quality) && typeof value.provenance.quality.eligible === "boolean"
+      && typeof value.provenance.quality.reason === "string"));
+}
+
 export function isPublicExample(value: unknown): value is PublicExample {
   if (!object(value) || value.version !== 1 || value.id !== "public-pressure-v1"
     || !object(value.replay) || value.replay.match_id !== value.id
     || value.replay.source_url !== null || !Array.isArray(value.replay.frames) || !value.replay.frames.length
-    || !Array.isArray(value.replay.insights) || !Array.isArray(value.insights) || !value.insights.length
+    || !replayMetadata(value.replay.metadata)
+    || !Number.isFinite(value.replay.duration_ms) || !Number.isFinite(value.replay.processed_until_ms)
+    || !object(value.replay.team_display_names)
+    || !Object.values(value.replay.team_display_names).every((name) => typeof name === "string")
+    || !Array.isArray(value.replay.insights) || !value.replay.insights.every(replayInsight)
+    || !Array.isArray(value.insights) || !value.insights.length
     || !localized(value.recaps) || !object(value.provenance) || !object(value.audio)
     || value.audio.url !== "/examples/pressure-en.wav" || value.audio.language !== "en-GB"
     || value.audio.audience !== "fan" || typeof value.audio.insight_id !== "string") return false;

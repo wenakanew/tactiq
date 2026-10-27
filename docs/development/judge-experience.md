@@ -96,6 +96,12 @@ node node_modules\@playwright\test\cli.js test
 
 Use fresh database/media paths for a repeated isolated run. Build settings are not production deployment settings. The Playwright launcher now invokes Next directly so Windows does not lose forwarded npm arguments.
 
+### PR review follow-up
+
+The public-package guard now requires replay metadata and validates each replay insight's consumed fields, along with warning collections, display names and replay clocks. Eight browser mutations of the otherwise-valid package, including missing metadata and `[null]` insights, verify the incomplete-package notice, functioning Retry control, successful recovery and absence of page errors/API calls.
+
+Translated recap headings and chapter navigation now carry the selected `lang` and automatic text direction, without changing English instructional text. Browser regressions check Swahili and Arabic labels, inherited chapter language and actual Arabic RTL direction. The production build/type check and all **14 example browser tests** passed after these review fixes; the earlier 35-test result above describes the original full-suite run, not a new full-suite run.
+
 ## Judging value and remaining limits
 
 Immediate exploration primarily supports User Experience & Presentation; traceable evidence and regression tests support Technological Implementation and Agentic Design. This is not a predicted official score.

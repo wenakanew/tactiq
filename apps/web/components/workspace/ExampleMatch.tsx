@@ -122,8 +122,8 @@ export default function ExampleMatch() {
           </div>
         </details>
         <section id="example-moments" tabIndex={-1} aria-label="Prepared recap" className="example-recap">
-          <h2>{recap?.title}</h2><p lang={language} dir="auto">{recap?.body}</p>
-          <div className="example-chapters">{example.insights.map((item) => <button type="button" className="btn btn--outline" key={item.insight_id}
+          <h2 lang={language} dir="auto">{recap?.title}</h2><p lang={language} dir="auto">{recap?.body}</p>
+          <div className="example-chapters" lang={language} dir="auto">{example.insights.map((item) => <button type="button" className="btn btn--outline" dir="auto" key={item.insight_id}
             onClick={() => choose(item.insight_id)}>{item.narratives[language][audience].title}</button>)}</div>
           <p className="status-line">Prepared deterministic recap. Selecting a chapter changes the replay and explanation above.</p>
         </section>

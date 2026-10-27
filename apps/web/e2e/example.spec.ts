@@ -1,4 +1,69 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import type { PublicExample } from "../lib/public-example";
+
+const preparedExample = JSON.parse(readFileSync(new URL("../public/examples/pressure-v1.json", import.meta.url), "utf8")) as PublicExample;
+
+for (const language of ["sw-KE", "ar-SA"] as const) {
+  test(`recap heading and chapter navigation use ${language}`, async ({ page }) => {
+    await page.goto("/example");
+    const recap = page.getByRole("region", { name: "Prepared recap" });
+    await expect(recap).toBeVisible();
+    await page.getByLabel("Example language").selectOption(language);
+    await expect(recap.getByRole("heading")).toHaveText(preparedExample.recaps[language].fan.title);
+    await expect(recap.getByRole("heading")).toHaveAttribute("lang", language);
+    await expect(recap.getByRole("heading")).toHaveAttribute("dir", "auto");
+    const chapters = recap.locator(".example-chapters");
+    await expect(chapters).toHaveAttribute("lang", language);
+    await expect(chapters).toHaveAttribute("dir", "auto");
+    for (const [index, moment] of preparedExample.insights.entries()) {
+      const chapter = chapters.getByRole("button").nth(index);
+      await expect(chapter).toHaveText(moment.narratives[language].fan.title);
+      await expect(chapter).toHaveAttribute("dir", "auto");
+      expect(await chapter.evaluate((element) => element.closest("[lang]")?.getAttribute("lang"))).toBe(language);
+    }
+    if (language === "ar-SA") {
+      expect(await recap.getByRole("heading").evaluate((element) => getComputedStyle(element).direction)).toBe("rtl");
+      expect(await chapters.getByRole("button").first().evaluate((element) => getComputedStyle(element).direction)).toBe("rtl");
+    }
+    // The surrounding instructions are still English.
+    await expect(recap.locator(".status-line")).not.toHaveAttribute("lang", language);
+  });
+}
+
+const malformedReplays: Array<[string, (value: Record<string, unknown>) => void]> = [
+  ["missing metadata", (value) => { delete value.metadata; }],
+  ["null metadata", (value) => { value.metadata = null; }],
+  ["array metadata", (value) => { value.metadata = []; }],
+  ["invalid warning collection", (value) => { value.metadata = { warnings: "warning" }; }],
+  ["invalid warning entry", (value) => { value.metadata = { warnings: [null] }; }],
+  ["null insight", (value) => { value.insights = [null]; }],
+  ["missing insight title", (value) => { value.insights = [{ insight_id: "moment-4", window_start_ms: 0, window_end_ms: 1 }]; }],
+  ["invalid insight window", (value) => { value.insights = [{ insight_id: "moment-4", title: "Pressure", window_start_ms: "0", window_end_ms: 1 }]; }],
+];
+
+for (const [name, mutate] of malformedReplays) {
+  test(`malformed replay: ${name} shows recovery instead of crashing`, async ({ page }) => {
+    const errors: string[] = [];
+    const apiRequests: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => { if (new URL(request.url()).pathname.startsWith("/api/")) apiRequests.push(request.url()); });
+    const payload = structuredClone(preparedExample);
+    const replay: Record<string, unknown> = { ...payload.replay };
+    mutate(replay);
+    await page.route("**/examples/pressure-v1.json", (route) => route.fulfill({
+      contentType: "application/json", body: JSON.stringify({ ...payload, replay }),
+    }));
+    await page.goto("/example");
+    await expect(page.locator(".error-notice[role=alert]")).toContainText("incomplete");
+    await expect(page.getByRole("button", { name: "Retry example" })).toBeVisible();
+    await page.route("**/examples/pressure-v1.json", (route) => route.fulfill({ json: preparedExample }));
+    await page.getByRole("button", { name: "Retry example" }).click();
+    await expect(page.getByRole("button", { name: "Play replay", exact: true })).toBeEnabled();
+    expect(errors).toEqual([]);
+    expect(apiRequests).toEqual([]);
+  });
+}
 
 test("public example works without identity, jobs or provider requests", async ({ page, context }, testInfo) => {
   const forbidden: string[] = [];
