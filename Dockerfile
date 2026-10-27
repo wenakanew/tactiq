@@ -10,7 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TACTIQ_MEDIA_DIR=/data/media \
     TACTIQ_DATABASE_PATH=/data/metadata.sqlite3
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgomp1 libstdc++6 \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=30 update \
+    && apt-get -o Acquire::Retries=3 -o Acquire::https::Timeout=30 install -y --no-install-recommends ffmpeg libgomp1 libstdc++6 \
     && apt-get clean \
     && groupadd --gid 10001 tactiq && useradd --uid 10001 --gid tactiq --create-home tactiq \
     && mkdir -p /app /data/media && chown -R tactiq:tactiq /app /data

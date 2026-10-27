@@ -29,6 +29,10 @@ param secrets array = []
 param livePath string
 @description('Readiness path.')
 param readyPath string
+@description('Keep one serving replica only under the reviewed warm-profile budget.')
+@minValue(0)
+@maxValue(1)
+param minReplicas int = 0
 
 resource app 'Microsoft.App/containerApps@2025-01-01' = {
   name: name
@@ -87,7 +91,7 @@ resource app 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: 0
+        minReplicas: minReplicas
         maxReplicas: 1
         cooldownPeriod: 60
         rules: [

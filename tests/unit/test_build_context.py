@@ -46,11 +46,27 @@ def test_web_includes_source_and_configuration_not_build_output(staging, tmp_pat
     (web / "src" / "page.tsx").write_text("offline")
     (web / ".next").mkdir()
     (web / ".next" / "generated.js").write_text("offline")
+    public = web / "public" / "examples"
+    public.mkdir(parents=True)
+    for name in ("pressure-v1.json", "pressure-en.wav", "azure-commentary.mp3"):
+        (public / name).write_bytes(b"public-fixture")
+    private = web / "uploads"
+    private.mkdir()
+    (private / "private.mp3").write_bytes(b"PRIVATE")
     output = tmp_path / "context"
     staging.stage(root, output, "web")
     assert (output / "src" / "page.tsx").is_file()
     assert not (output / ".env").exists()
     assert not (output / ".next").exists()
+    assert not (output / "uploads").exists()
+    for name in ("pressure-v1.json", "pressure-en.wav", "azure-commentary.mp3"):
+        assert (output / "public" / "examples" / name).read_bytes() == b"public-fixture"
+
+
+def test_standalone_web_image_copies_public_assets():
+    root = Path(__file__).resolve().parents[2]
+    dockerfile = (root / "apps" / "web" / "Dockerfile").read_text()
+    assert "COPY --from=build --chown=tactiq:tactiq /app/public ./public" in dockerfile
 
 
 def test_foundry_image_includes_and_checks_async_azure_transport():
@@ -59,3 +75,5 @@ def test_foundry_image_includes_and_checks_async_azure_transport():
     assert "aiohttp>=3.12,<4" in project["project"]["optional-dependencies"]["foundry"]
     dockerfile = (root / "Dockerfile").read_text()
     assert "from azure.core.pipeline.transport import AioHttpTransport; AioHttpTransport()" in dockerfile
+    assert "https://deb.debian.org" in dockerfile
+    assert "Acquire::https::Timeout=30" in dockerfile

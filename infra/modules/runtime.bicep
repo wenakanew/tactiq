@@ -57,6 +57,8 @@ param speechVoicesJson string = '{}'
 param speechPairsJson string = '{}'
 @description('Activate scheduled/event jobs only after private bootstrap and runtime checks.')
 param activateJobs bool = false
+@description('Budget-balanced warm serving: one 0.25 vCPU / 0.5 GiB replica per app. Jobs are unchanged.')
+param warmServing bool = false
 @description('Licensed, digest-verified ONNX model packaged in the worker image; required before enabling CV uploads.')
 param cvModelPath string = ''
 @description('Verified packaged ONNX model sha256; no runtime model download.')
@@ -141,8 +143,9 @@ module api 'app.bicep' = {
     image: backendImage
     external: false
     port: 8080
-    cpu: '0.5'
-    memory: '1Gi'
+    cpu: warmServing ? '0.25' : '0.5'
+    memory: warmServing ? '0.5Gi' : '1Gi'
+    minReplicas: warmServing ? 1 : 0
     environmentVariables: apiEnv
     secrets: apiSecrets
     livePath: '/health/live'
@@ -153,6 +156,7 @@ module web 'app.bicep' = {
   name: 'tactiq-web'
   params: {
     name: 'ca-tactiq-web-3e4d'
+    minReplicas: warmServing ? 1 : 0
     location: location
     tags: tags
     environmentId: environmentId

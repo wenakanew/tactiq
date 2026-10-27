@@ -3,6 +3,9 @@ targetScope = 'resourceGroup'
 @description('Verified approved web repository SHA256 reference. Validate exact repository/digest before deployment.')
 @minLength(71)
 param webImage string
+@minValue(0)
+@maxValue(1)
+param minReplicas int = 0
 
 resource environment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
   name: 'cae-tactiq-prod-3e4d'
@@ -14,6 +17,7 @@ module web 'modules/app.bicep' = {
   name: 'tactiq-web-only'
   params: {
     name: 'ca-tactiq-web-3e4d'
+    minReplicas: minReplicas
     location: 'westus3'
     tags: { application: 'tactiq', environment: 'prod-pilot', plan: 'tactiq-private-3e4d' }
     environmentId: environment.id

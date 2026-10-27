@@ -5,6 +5,7 @@ import { useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { API_BASE, apiFetch as fetch, responseError } from "../../lib/api";
 import type { MatchStatePayload } from "../../lib/match-types";
+import type { ServiceCapabilities } from "../../lib/service-capabilities";
 import TacticalReplay from "../TacticalReplay";
 import SessionAccess, { type WorkspaceAccess } from "../SessionAccess";
 import OperationsPanel from "../OperationsPanel";
@@ -108,16 +109,6 @@ type CommentaryAuditEntry = {
     tuning_version?: string | null;
     agents?: CommentaryAuditAgent[];
   };
-};
-
-type ServiceCapabilities = {
-  cv_model_configured: boolean; cv_detector: string; youtube_import_configured: boolean; speech_configured: boolean;
-  speech?: { configured: boolean; languages: Record<string, { single: boolean; dual: boolean }> };
-  narrative?: { status: string; last_failure?: { reason?: string } | null };
-  paginated_streams?: boolean;
-  paid_generation_enabled?: boolean;
-  deterministic_recap_enabled?: boolean;
-  analysis_admission_enabled?: boolean;
 };
 
 function parseVoicePairMap(raw: string | undefined): Record<string, { primary?: string; secondary?: string }> {
@@ -301,7 +292,6 @@ export default function MatchWorkspace({ initialIntent = "demo", freshStart = fa
   const [recapChapters, setRecapChapters] = useState<RecapChapter[]>([]);
   const [speechStatus, setSpeechStatus] = useState<string>("idle");
   const [capabilities, setCapabilities] = useState<ServiceCapabilities | null>(null);
-  const [capabilitiesError, setCapabilitiesError] = useState("");
   const [audioNotice, setAudioNotice] = useState("");
   const [transcript, setTranscript] = useState<CommentaryScript | null>(null);
   const [playback, setPlayback] = useState<PlaybackSnapshot | null>(null);
@@ -427,19 +417,6 @@ export default function MatchWorkspace({ initialIntent = "demo", freshStart = fa
       if (generation === workspaceGenerationRef.current) setNavigationNotice(error instanceof Error ? error.message : "Unable to load saved matches.");
     }
   }
-
-  useEffect(() => {
-    if (!canRead) return;
-    const controller = new AbortController();
-    void fetch("/api/v1/capabilities", { signal: controller.signal }).then(async (response) => {
-      if (!response.ok) throw new Error(await responseError(response));
-      const next = await response.json() as ServiceCapabilities;
-      if (!controller.signal.aborted) { setCapabilities(next); setCapabilitiesError(""); }
-    }).catch((error) => {
-      if (!controller.signal.aborted) setCapabilitiesError(error instanceof Error ? error.message : "Service configuration is unavailable.");
-    });
-    return () => controller.abort();
-  }, [canRead, sessionRevision]);
 
   useEffect(() => {
     if (!canRead) return;
@@ -1732,7 +1709,7 @@ export default function MatchWorkspace({ initialIntent = "demo", freshStart = fa
         </nav>
       </header>
       <main id="workspace-content" className={matchId ? "workspace-open" : undefined} tabIndex={-1}>
-        <div className="workspace-access-region"><SessionAccess onSessionChanged={resetWorkspaceSession} onAccessChanged={setAccess}
+        <div className="workspace-access-region"><SessionAccess onSessionChanged={resetWorkspaceSession} onAccessChanged={setAccess} onCapabilitiesChanged={setCapabilities}
           refreshRevision={sessionRevision} signInRequired={signInRequired} /></div>
         {canRead ? (
           <>
@@ -1743,7 +1720,7 @@ export default function MatchWorkspace({ initialIntent = "demo", freshStart = fa
           </div>
 
           {matchId ? <>{preferences}{commentaryControls}</> : null}
-          {capabilitiesError ? <p className="notice" role="status">{capabilitiesError}</p> : capabilities && matchId ? (
+          {capabilities && matchId ? (
             <p className="service-awareness">{capabilities.speech_configured && CLOUD_SPEECH_ENABLED
               ? "Azure Speech configured. Playback commentary and Listen can make metered cloud calls."
               : "Cloud speech is disabled or unconfigured. Browser narration requires matching-language voices; dual mode needs two distinct male voices."}

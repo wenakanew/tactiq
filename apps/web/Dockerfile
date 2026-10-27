@@ -13,6 +13,7 @@ ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 RUN addgroup -g 10001 tactiq && adduser -D -u 10001 -G tactiq tactiq
 COPY --from=build --chown=tactiq:tactiq /app/.next/standalone ./
 COPY --from=build --chown=tactiq:tactiq /app/.next/static ./.next/static
+COPY --from=build --chown=tactiq:tactiq /app/public ./public
 USER tactiq
 EXPOSE 3000
 CMD ["node", "server.js"]

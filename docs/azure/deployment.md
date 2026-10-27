@@ -4,6 +4,20 @@
 
 **Connected Azure pilot, 2026-10-26.** Open the [live workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) or [landing page](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io). The public frontend now reaches the real internal API, private PostgreSQL, private media storage and durable cloud workers. This supersedes the earlier frontend-only deployment and missing-API 404 diagnosis. It is a budget-limited hackathon pilot, not an HA service or a certified production-readiness result.
 
+## Judge experience refresh, October 27
+
+The [live prepared example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) is now reachable from the primary landing-page button and the workspace entry panel. Browser verification used real Azure responses, no intercepted requests, and submitted no analysis or paid generation. Example JSON, matching offline WAV and separately labelled Azure MP3 were downloaded and SHA256-matched against the published assets. Arabic recap selection worked, and opening the example made zero backend API requests.
+
+The frontend image now copies `public` into its standalone runtime. Source staging retains public WAV/MP3 assets while excluding private uploads and environment files. Session initialization passes its capabilities response into the workspace, eliminating the second capabilities fetch without caching or bypassing session authorization.
+
+Both serving apps retain one 0.25 vCPU / 0.5 GiB replica, maximum one. The API was reduced from 0.5 vCPU / 1 GiB to offset idle serving cost; job resources, schedules, one-analysis/day admission, ownership and the fixed paid-provider allocation are unchanged. The resulting conditional subscription estimate is approximately **USD 147.44/month**, under the same eight-active-hours/day assumptions, not a hard cap. See [cost arithmetic and limitations](costs.md#october-27-balanced-warm-serving-profile).
+
+Three fresh Chromium contexts measured private workspace access ready in **3,554 / 3,528 / 3,976 ms**, including the initial capabilities and guest-session requests, exactly once each. The landing page was usable in **1,761 ms**; navigating from it to the example was usable in **1,740 ms**. Repeated HTTP first-byte measurements were approximately **1.0-1.23 seconds** for the landing page, workspace document and capabilities. These are point-in-time measurements from the test host, not a latency SLA or proof of identical performance for every visitor.
+
+Before rollout, the first workspace document took 14.7 seconds and the first capabilities request 26.9 seconds, with container startup visible in logs. The new profile removes normal idle scale-to-zero wakes; image rollouts, restarts, failures, network distance and database contention can still add delay. The API working-set sample after rollout reached approximately 306 MiB of 512 MiB, with zero replica restarts. This is not a paid-provider peak-memory or sustained-load result. Roll back resources if memory pressure or restarts appear; do not silently increase spending.
+
+Live revisions: web `ca-tactiq-web-3e4d--0000002`; API `ca-tactiq-api-3e4d--0000006`. All three existing jobs use the same new backend digest, without starting an analysis as a deployment check. Pre-deploy verification included 25 frontend unit tests, 126 focused Python tests and 32 production browser checks. Repository-conditioned registry grants were verified without widening permissions.
+
 ## Hackathon demonstration and access
 
 The submission's primary data path is project-generated synthetic football events. The [challenge/category/judging map](../submission/judging-guide.md) connects the five required stages and Microsoft/Azure integrations to actual evidence. [Watch the entrant-supplied 1:55 pitch](https://youtu.be/ktO6Mbmkhy4); its local-browser footage and separately verified Azure audio have different scopes.
@@ -41,8 +55,8 @@ The audio is genuine Azure Speech output from a grounded Foundry lead/analyst ex
 | Component | Actual deployment |
 | --- | --- |
 | Region/resource group | `westus3` / `rg-tactiq-prod-3e4d` |
-| Public web | `ca-tactiq-web-3e4d`, Next.js, 0.25 vCPU / 0.5 GiB, zero-to-one replicas |
-| Private API | `ca-tactiq-api-3e4d`, internal HTTPS ingress, 0.5 vCPU / 1 GiB, zero-to-one replicas |
+| Public web | `ca-tactiq-web-3e4d`, Next.js, 0.25 vCPU / 0.5 GiB, one serving replica |
+| Private API | `ca-tactiq-api-3e4d`, internal HTTPS ingress, 0.25 vCPU / 0.5 GiB, one serving replica |
 | Database | PostgreSQL 17 on `vm-tactiq-db-3e4d`, private `db.tactiq.internal`, retained dedicated data volume, `verify-full` TLS |
 | Private media | `sttactiqprod3e4d`, private Blob endpoint, scoped managed-identity access |
 | Secrets | `kv-tactiq-prod-3e4d`, private endpoint and per-secret runtime reader grants |
@@ -85,7 +99,7 @@ The reported reconnect/404 was caused by an absent backend, not CORS. The backen
 
 Browsers use same-origin `/api/*` and `/media/*`; Next.js proxies to the private API. Its internal target is baked into the Linux frontend build with `TACTIQ_BACKEND_URL`. Runtime environment alone cannot change a built rewrite. Exact public HTTPS origin checks and credentialed CORS are configured server-side; do not use wildcard origins or expose the backend publicly as a shortcut.
 
-Scale-to-zero cold starts exposed Next.js's shorter default proxy deadline (`ECONNRESET`). The web image now uses a 180-second proxy timeout. A real cold-start capabilities request completed with HTTP 200 in 92.1 seconds, without introducing always-on replica cost. Allow for cold starts and up to fifteen minutes before initial dispatch, plus backlog.
+The original scale-to-zero profile exposed Next.js's shorter default proxy deadline (`ECONNRESET`). The web image retains a 180-second proxy timeout; a historical cold-start capabilities request took 92.1 seconds. The October 27 warm profile supersedes normal idle scale-to-zero for the serving apps. Restarts can still delay access, and new analysis still has up to fifteen minutes before initial dispatch, plus backlog.
 
 Local `.env` files are development inputs and were excluded from build contexts. Production uses explicit Container Apps environment values and private Key Vault references. The API fails closed on missing cloud configuration instead of selecting SQLite.
 
@@ -109,10 +123,12 @@ Registry: `b8e2968c0n2026ca14acr.azurecr.io`. No admin/anonymous access or regis
 
 | Artifact | ACR run | Repository and digest |
 | --- | --- | --- |
+| Current web, prepared judge example and shared initialization | `dfd` | `tactiq-3e4d/web@sha256:f358029f5ae254d9e7d33255255bd110ff029ba008288c2a12e08c83a93e98e6` |
+| Current backend/jobs, timestamp and multilingual grounding fixes | `dfe` | `tactiq-3e4d/backend@sha256:9d9705dd3df6d3d6acd5d50cdbc5c8f96762ba71b28afa6db45cc9c36144f1ab` |
 | Web, cold-start proxy correction | `df6` | `tactiq-3e4d/web@sha256:070df89ad3d785b30dafb7f734da025c3a9e90e7d9f45b9b2dc127bd780beac5` |
 | Backend, private TLS/certificate, grounded JSON and Azure async transport | `dfa` | `tactiq-3e4d/backend@sha256:526e261fc72297d5d96f0d4cbcab250236eadb717eed80c79be7d876f7792ffd` |
 
-`infra/scripts/stage_build_context.py` copies a source/configuration allowlist before upload. Secrets, `.env`, media, session files and model weights are excluded. The Linux image checks Framework imports and construction of Azure's async HTTP transport during its build; `aiohttp` is explicitly locked in the Foundry extra, not accidentally supplied by development dependencies. `tools/fetch_detector.py` downloads the official digest-pinned YOLOX-tiny artifact/license at build time and bundles its notice. No model download occurs during request processing. Packaging is **not a measurement of football-video accuracy or proof that a production video job has completed**; see [third-party notices](../reference/third-party-notices.md).
+`infra/scripts/stage_build_context.py` copies a source/configuration allowlist before upload. Secrets, `.env`, private media/uploads, session files and existing model weights are excluded; intentionally public example WAV/MP3 assets are included. Use an absolute staged context with the existing ACR task's Docker step; on the tested Windows CLI, passing a separate relative `--file Dockerfile` selected the workspace-root backend Dockerfile even for the web task. Failed runs `dfb`/`dfc` were not deployed. Debian package downloads now use HTTPS with bounded retries/timeouts. The Linux image checks Framework imports and construction of Azure's async HTTP transport during its build; `aiohttp` is explicitly locked in the Foundry extra, not accidentally supplied by development dependencies. `tools/fetch_detector.py` downloads the official digest-pinned YOLOX-tiny artifact/license at build time and bundles its notice. No model download occurs during request processing. Packaging is **not a measurement of football-video accuracy or proof that a production video job has completed**; see [third-party notices](../reference/third-party-notices.md).
 
 ## Operating and redeploying safely
 
@@ -140,7 +156,7 @@ Use resource-specific `ContainerAppConsoleLogs` / `ContainerAppSystemLogs` in th
 
 ## Pilot qualifications and remaining verification
 
-The whole-subscription **conditional estimate is $146.13/month**, not a hard Azure billing cap. Native admission is one per UTC day globally; the guest's three-trial entitlement does not override it. Serving assumptions, image transfer, telemetry and unrelated resources can exceed the estimate; see [cost boundaries](costs.md).
+The whole-subscription **conditional estimate is approximately $147.44/month** after the October 27 warm profile, not a hard Azure billing cap. Native admission is one per UTC day globally; the guest's three-trial entitlement does not override it. Serving assumptions, image transfer, telemetry and unrelated resources can exceed the estimate; see [cost boundaries](costs.md).
 
 The first public synthetic analysis, backup restore, genuine single/dual Foundry output, Speech generation, private Blob round trip/range/adapter ownership checks, public CORS and cross-workspace HTTP denial are verified with the separate scopes above. Interactive Microsoft sign-in, the original browser's owned Speech/private-media playback, production video inference, distinct-client forwarding-chain checks, failure recovery and sustained-load capacity remain unverified. No 100-user capacity, HA/SLA, football-model accuracy or fully verified Microsoft login claim is made.
 

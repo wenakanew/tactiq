@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Loader2, LockKeyhole, LogOut } from "lucide-react";
 import { API_BASE, apiFetch, responseError } from "../lib/api";
-import { cloudSessionFrom, principalFrom, sessionTime, type PublicTrialCapability, type WorkspaceAccess } from "../lib/workspace-access";
+import { cloudSessionFrom, principalFrom, sessionTime, type WorkspaceAccess } from "../lib/workspace-access";
+import type { ServiceCapabilities } from "../lib/service-capabilities";
 export type { Principal, WorkspaceAccess } from "../lib/workspace-access";
 
-export default function SessionAccess({ onSessionChanged, onAccessChanged, refreshRevision = 0, signInRequired = false }: {
+export default function SessionAccess({ onSessionChanged, onAccessChanged, onCapabilitiesChanged, refreshRevision = 0, signInRequired = false }: {
   onSessionChanged: (clearPendingOperations?: boolean) => void;
   onAccessChanged?: (access: WorkspaceAccess) => void;
+  onCapabilitiesChanged?: (capabilities: ServiceCapabilities) => void;
   refreshRevision?: number;
   signInRequired?: boolean;
 }) {
@@ -39,8 +41,9 @@ export default function SessionAccess({ onSessionChanged, onAccessChanged, refre
       try {
         const capabilities = await apiFetch("/api/v1/capabilities", { signal: controller.signal });
         if (!capabilities.ok) throw new Error(await responseError(capabilities));
-        const config = await capabilities.json() as { auth_enabled: boolean; public_trial?: PublicTrialCapability };
+        const config = await capabilities.json() as ServiceCapabilities;
         if (controller.signal.aborted) return;
+        onCapabilitiesChanged?.(config);
         if (config.public_trial?.enabled === true) {
           // This endpoint reuses guest/member sessions and only issues a guest when needed.
           const session = await apiFetch("/api/v1/session/guest", { method: "POST", signal: controller.signal });
@@ -71,7 +74,7 @@ export default function SessionAccess({ onSessionChanged, onAccessChanged, refre
       }
     })();
     return () => controller.abort();
-  }, [retry, refreshRevision, onAccessChanged]);
+  }, [retry, refreshRevision, onAccessChanged, onCapabilitiesChanged]);
 
   useEffect(() => {
     if (!access.cloud || !access.expiresAt) return;

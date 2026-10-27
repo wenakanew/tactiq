@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 // These are browser contract fixtures, not a live Microsoft identity or cloud-runtime test.
 async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled = true) {
   let established = false, member = false, remaining = initialRemaining, creates = 0, guestInitializations = 0;
-  let sessionReads = 0;
+  let sessionReads = 0, capabilityReads = 0;
   let workspaceOrigin = "";
   let failNextCreate = false;
   let failNextCapacity = false, sessionUnavailable = false, unavailableSessions = 0;
@@ -20,11 +20,14 @@ async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled =
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname;
     if (path.includes("/debug") || path.includes("/operations")) protectedReads.push(path);
-    if (path === "/api/v1/capabilities") return route.fulfill({ json: {
-      auth_enabled: true, public_trial: { enabled: true, microsoft_login_enabled: true, owned_speech_required: true },
-      paginated_streams: true, paid_generation_enabled: false, speech_configured: false, youtube_import_configured: true,
-      analysis_admission_enabled: admissionEnabled,
-    } });
+    if (path === "/api/v1/capabilities") {
+      capabilityReads += 1;
+      return route.fulfill({ json: {
+        auth_enabled: true, public_trial: { enabled: true, microsoft_login_enabled: true, owned_speech_required: true },
+        paginated_streams: true, paid_generation_enabled: false, speech_configured: false, youtube_import_configured: true,
+        analysis_admission_enabled: admissionEnabled,
+      } });
+    }
     if (path === "/api/v1/session") {
       sessionReads += 1;
       return route.fulfill(established ? { json: session() } : { status: 401, json: { detail: "No session" } });
@@ -102,6 +105,7 @@ async function trialFixture(page: Page, initialRemaining = 3, admissionEnabled =
     },
     get creates() { return creates; }, get guestInitializations() { return guestInitializations; },
     get sessionReads() { return sessionReads; }, get unavailableSessions() { return unavailableSessions; },
+    get capabilityReads() { return capabilityReads; },
     operationIds, protectedReads, failNext() { failNextCreate = true; },
     failCapacity() { failNextCapacity = true; },
     recoverSession() { sessionUnavailable = false; },
@@ -128,6 +132,8 @@ test("guest trial initializes explicitly, admits three analyses and offers fixed
   await fixture.open("/workspace?start=demo");
   await expect(page.getByText("3 of 3 free analyses remaining", { exact: true })).toBeVisible();
   expect(fixture.sessionReads).toBe(0);
+  await expect(page.getByRole("button", { name: "Start live scenario", exact: true })).toBeEnabled();
+  expect(fixture.capabilityReads).toBe(1);
   await expect(page.getByText(/Guest analyses expire after 24 hours/)).toBeVisible();
   await expect(page.getByLabel("Workspace access token", { exact: true })).toHaveCount(0);
   await page.getByLabel("Live commentary", { exact: true }).uncheck();

@@ -24,7 +24,8 @@ def stage(source: Path, destination: Path, component: str) -> int:
         ]
         trees = ["src", "app", "components", "lib", "public"]
         suffixes = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".svg", ".ico",
-                    ".png", ".jpg", ".jpeg", ".webp", ".woff", ".woff2", ".txt"}
+                    ".png", ".jpg", ".jpeg", ".webp", ".woff", ".woff2", ".txt",
+                    ".wav", ".mp3"}
     else:
         raise ValueError("Unknown component")
     files = [root / name for name in exact if (root / name).is_file()]

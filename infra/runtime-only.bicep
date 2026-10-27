@@ -9,6 +9,7 @@ param budgetPeriodStart string
 param budgetPeriodEnd string
 param trustedProxyCidrs string
 param activateJobs bool = false
+param warmServing bool = false
 param cvModelPath string = ''
 param cvModelSha256 string = ''
 param speechEnabled bool = false
@@ -85,6 +86,7 @@ module runtime 'modules/runtime.bicep' = {
     budgetPeriodEnd: budgetPeriodEnd
     trustedProxyCidrs: trustedProxyCidrs
     activateJobs: activateJobs
+    warmServing: warmServing
     cvModelPath: cvModelPath
     cvModelSha256: cvModelSha256
     speechEnabled: speechEnabled
