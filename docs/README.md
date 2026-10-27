@@ -6,6 +6,7 @@
 
 | Your goal | Read |
 | --- | --- |
+| Try the immediate judge experience | [Live prepared synthetic match](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) · [Walkthrough and provenance](submission/demo-guide.md#immediate-prepared-example) |
 | Understand or demonstrate Tactiq | [User guide](product/user-guide.md) · [Demo guide](submission/demo-guide.md) |
 | Review how it works | [Architecture](architecture/overview.md) · [Agent workflow](architecture/agent-workflow.md) · [Decisions](architecture/decisions.md) |
 | Develop locally | [Getting started](development/getting-started.md) · [Testing](development/testing.md) |
@@ -21,4 +22,4 @@
 - **Planned / in progress:** approved direction or partial work, not proof of integrated production behavior.
 - **Verified release:** requires dated, reproducible evidence against an identified release and deployment.
 
-A connected Azure pilot and genuine Foundry/Agent Framework/Speech checks are documented in the [dated release record](azure/deployment.md). The local reference remains the credential-free synthetic test path. Interactive Microsoft sign-in, production video accuracy, sustained capacity and full production-readiness certification remain unverified. Local tests, actual provider receipts and deployed behavior are distinct evidence scopes.
+A connected Azure pilot, the October 27 public example deployment and genuine Foundry/Agent Framework/Speech checks are documented in the [dated release record](azure/deployment.md). The hosted example provides immediate prepared exploration without sign-in or new paid generation; the local reference provides repeatable new synthetic analysis without the cloud admission cap. Interactive Microsoft sign-in, production video accuracy, sustained capacity and full production-readiness certification remain unverified. Local tests, actual provider receipts and deployed behavior are distinct evidence scopes.
