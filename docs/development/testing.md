@@ -52,6 +52,8 @@ The optional cloud API is selected explicitly with `TACTIQ_RUNTIME_MODE=cloud`; 
 
 The `cloud-contracts` CI job runs disposable loopback-only PostgreSQL 17 and Microsoft Azurite services. Its fixed test credentials belong only to those ephemeral containers and must never be used for a deployment. The job has no Azure credentials and does not provision cloud resources. A workflow definition is not a passing hosted run; retain the actual run/artifact URL after authorized publication.
 
+Guest-expiry concurrency checks allow an empty first batch when `FOR UPDATE SKIP LOCKED` encounters a row held by a concurrent sign-in. After that transaction completes, the next expiry pass must enqueue the guest exactly once and preserve cleanup until acknowledgement. An event-synchronized regression forces an expired guest's rejected sign-in to hold the row lock, verifying both the skip and eventual cleanup without sleeps or weakened ownership checks.
+
 For an already approved disposable local database:
 
 ```powershell

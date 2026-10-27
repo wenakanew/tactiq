@@ -387,12 +387,54 @@ def test_pg_expiry_and_concurrent_promotion_never_both_claim_cleanup(database):
         promote = executor.submit(late_promote)
         expiry = executor.submit(replica().expire_guests)
         assert promote.result() is None
-        pending = expiry.result()
+        concurrent_pending = expiry.result()
+    # Expiry deliberately skips a row locked by the rejected sign-in. Once
+    # both transactions finish, the next worker pass must claim it.
+    pending = replica().expire_guests()
+    assert len(pending) == 1
+    assert concurrent_pending in ((), pending)
     assert pending[0].analysis_ids == (result.analysis_id,)
     with pytest.raises(AccessDenied):
         store.require_analysis(guest.token, result.analysis_id)
     assert replica().expire_guests() == pending
     replica().acknowledge_cleanup(guest.principal.tenant_id)
+    replica().acknowledge_cleanup(guest.principal.tenant_id)
+    assert store.expire_guests() == ()
+
+
+def test_pg_expiry_retries_guest_locked_by_rejected_late_promotion(database, monkeypatch):
+    store, _, now, replica = database
+    guest = store.issue_guest()
+    result = store.reserve_analysis(guest.token, IP, intent())
+    now[0] = guest.principal.expires_at
+    entered, release = threading.Event(), threading.Event()
+    promoter = replica()
+    original_rows = promoter._session_rows
+
+    def pause_with_guest_locked(db, digest):
+        rows = original_rows(db, digest)
+        entered.set()
+        assert release.wait(10)
+        return rows
+
+    monkeypatch.setattr(promoter, "_session_rows", pause_with_guest_locked)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        promotion = executor.submit(promoter.sign_in, identity(), guest_digest=proof(guest))
+        try:
+            assert entered.wait(10)
+            assert replica().expire_guests() == ()
+        finally:
+            release.set()
+        with pytest.raises(AccessDenied):
+            promotion.result(timeout=10)
+
+    pending = replica().expire_guests()
+    assert len(pending) == 1
+    assert pending[0].tenant_id == guest.principal.tenant_id
+    assert pending[0].analysis_ids == (result.analysis_id,)
+    assert replica().expire_guests() == pending
+    with pytest.raises(AccessDenied):
+        store.require_analysis(guest.token, result.analysis_id)
     replica().acknowledge_cleanup(guest.principal.tenant_id)
     assert store.expire_guests() == ()
 
