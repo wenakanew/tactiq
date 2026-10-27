@@ -4,7 +4,7 @@
 
 **Platform:** desktop browser, Next.js/React frontend and Python/FastAPI backend. No proprietary hardware is required. The challenge demonstration uses **project-generated, football-realistic synthetic events**, not real league footage.
 
-**[Watch the 1:55 YouTube pitch](https://youtu.be/ktO6Mbmkhy4)** · [Public Azure pilot](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) · [Public source](https://github.com/wenakanew/tactiq)
+**[Explore the live example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example)** · [Watch the 1:55 YouTube pitch](https://youtu.be/ktO6Mbmkhy4) · [Private workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) · [Public source](https://github.com/wenakanew/tactiq)
 
 YouTube player metadata on 2026-10-26 reported `Tactiq Pitch`, 115 seconds, playable and not private. The entrant must still check final signed-out playback and media rights, and put the video URL on the hackathon project page. A repository link is not a submitted form.
 
@@ -12,16 +12,18 @@ YouTube player metadata on 2026-10-26 reported `Tactiq Pitch`, 115 seconds, play
 
 | Route | Access and scope |
 | --- | --- |
-| **Prepared public example in this revision** | Frontend-only `/example`, no sign-in or backend. Real synthetic-engine replay, prepared deterministic explanations in seven locales, evidence, recap and matching offline English narration. Not yet deployed to the Azure pilot. |
+| **Live prepared public example** | Deployed October 27 at [`/example`](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example), no sign-in or backend API request. Real synthetic-engine replay, prepared deterministic explanations in seven locales, evidence, recap and matching offline English narration. No live model call. |
 | **Free local synthetic test** | No Tactiq account, payment, provider key or cloud daily-admission cap. Demonstrates the analytical pipeline, replay, evidence, personalization and deterministic recap. Requires installing the open-source development prerequisites. |
 | **Public Azure pilot** | The prepared [live example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) bypasses backend startup and new-analysis waits. Web/API now retain one small serving replica each. Private new analysis still has up to fifteen-minute initial dispatch, one new native analysis per UTC day globally, ownership, guest expiry and a fixed shared paid-generation budget. Restarts and deployments can still cause delays. Do not describe this route as unrestricted live AI access. |
 | **Verified Azure AI/media receipts** | Published Foundry/Framework/Speech and private-storage evidence proves those particular checks. It is not a substitute for live interactive access or a promise of unlimited paid generation. |
 
-Rule 4.8 requires free testing availability through November 10, 2026 at 11:59 pm Pacific. The entrant must verify the offered local test route and maintain its availability, and resolve any need for unrestricted live paid-provider testing before asserting complete access compliance. No cloud controls were disabled to create these instructions.
+Rule 4.8 requires free testing availability through November 10, 2026 at 11:59 pm Pacific. The entrant must maintain the offered hosted example and local test route, and resolve any need for unrestricted live paid-provider testing before asserting complete access compliance. No analysis, ownership or paid-generation controls were disabled to provide these routes.
 
 ## Immediate prepared example
 
-Run this revision's frontend with Node 22.13+; Python, Azure credentials, a database and FFmpeg are not needed to **browse the checked-in example**. From the repository root:
+**For judges:** open the [live prepared example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) directly. No setup is required.
+
+**For local reproduction:** run this revision's frontend with Node 22.13+; Python, Azure credentials, a database and FFmpeg are not needed to **browse the checked-in example**. From the repository root:
 
 ```powershell
 Set-Location apps\web

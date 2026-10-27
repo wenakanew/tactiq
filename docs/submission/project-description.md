@@ -1,7 +1,7 @@
 # Tactiq
 ## See the play. Understand the game.
 
-[Watch the 1:55 pitch](https://youtu.be/ktO6Mbmkhy4) · [Explore the public code](https://github.com/wenakanew/tactiq) · [Try the Azure pilot](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) · [Free local judge testing](demo-guide.md#free-local-judge-testing)
+[Explore the interactive example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) · [Watch the 1:55 pitch](https://youtu.be/ktO6Mbmkhy4) · [Explore the public code](https://github.com/wenakanew/tactiq)
 
 ### Football shows us what happened. Tactiq helps us understand why it mattered.
 
@@ -10,6 +10,18 @@ Tactiq is an evidence-first football intelligence workspace built around the Mic
 It combines a reproducible analytical pipeline with Microsoft Foundry, Microsoft Agent Framework and Azure AI Speech. Fans get accessible explanations, analysts get supporting measurements, and player-focused viewers get attributable context where the evidence supports it.
 
 **Not just AI talking about football. Football intelligence that shows its work.**
+
+## Start here: experience a match
+
+Open the [public interactive example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) in a desktop browser. No sign-in, installation, provider key or analysis queue is required.
+
+- Play and seek a synthetic match passage in 2D or a 2.5D scene.
+- Select six tactical moments and inspect their supporting evidence.
+- Switch between Fan and Analyst explanations.
+- Explore seven text locales, including Kiswahili and Arabic.
+- Navigate recap chapters and listen to the matching prepared English explanation.
+
+The landing page's primary **Explore an example match** button and the workspace entry panel lead directly to this experience. Its output is prepared, not live inference; the provenance is explained below.
 
 ## The problem
 
@@ -35,11 +47,11 @@ The submission demonstration uses **our own labelled, football-realistic synthet
 
 ### Experience it without waiting for a new analysis
 
-This revision adds **Explore an example match** at `/example`: a deliberately public synthetic package produced through the same engine and rendered by the real replay and evidence components. Visitors can play and seek, select moments, compare Fan and Analyst, change among seven locales, inspect provenance and read a recap without signing in or starting a job.
+Deployed and verified on October 27, **Explore an example match** at `/example` is a deliberately public synthetic package produced through the same engine and rendered by the real replay and evidence components. Visitors can play and seek, select moments, compare Fan and Analyst, change among seven locales, inspect provenance and read a recap without signing in or starting a job.
 
 The selected match's explanations are **prepared deterministic domain templates**, not live or pre-generated Foundry output. Its matching English Fan narration was synthesized offline. A separate, clearly labelled Azure recording demonstrates an earlier genuine lead/analyst exchange about a different passage. Missing moment/locale audio is disclosed, not replaced with unrelated speech.
 
-The new route is locally verified in this source revision; **the existing Azure pilot has not been updated by this PR**. [Frontend-only instructions and walkthrough](demo-guide.md#immediate-prepared-example) and [measured evidence](../development/judge-experience.md) provide the reproducible test route.
+The live route was exercised against real Azure responses, with zero backend API requests while opening the example. Its JSON and both audio assets matched the published source byte-for-byte. [Hosted and frontend-only instructions](demo-guide.md#immediate-prepared-example) and the [dated deployment evidence](../azure/deployment.md#judge-experience-refresh-october-27) distinguish live checks from local regression results.
 
 ## One pipeline, all five challenge stages
 
@@ -100,6 +112,8 @@ The application uses Next.js/React, Python/FastAPI, PostgreSQL, FFmpeg and local
 
 Analysis should not depend on keeping a web request open. Tactiq separates the interactive experience from durable cloud workers, using Service Bus, database-backed state and bounded execution.
 
+The prepared public example is independent of private workspace initialization. The web and API retain small serving replicas to avoid normal idle cold starts, while the workspace reuses its initial capabilities response rather than fetching it twice. Restarts, network conditions and service contention can still affect loading time.
+
 Private media and workspace ownership help protect user material. Usage reservations occur before paid generation, completed results can be reused, and ambiguous calls are not automatically retried or treated as free.
 
 The outcome is a connected, cost-aware hackathon pilot with a path toward broader adoption, not a claim of unlimited processing, enterprise certification or proven commercial impact.
@@ -120,17 +134,23 @@ These are evidence-backed category fits, not award predictions. The rules permit
 
 ## What has been demonstrated
 
+The live public example has been exercised against real Azure responses, including replay presentation, language selection and public example assets, without mocked network routes or a new analysis request.
+
 The connected Azure pilot has completed a labelled synthetic analysis and returned evidence-linked results. Separately verified checks demonstrate genuine Foundry narrative generation, Agent Framework lead/analyst output, Azure dual-voice audio, private Blob full/range reads and workspace access checks. A private database backup was restored into an isolated database.
 
-The pitch shows the real local browser application with synthetic data and disclosed deterministic explanations. Its Azure audio excerpt is previously verified provider output, not a new model call or proof of browser-authenticated playback.
+The pitch shows the real local browser application with synthetic data and disclosed deterministic explanations. Its Azure audio excerpt is previously verified provider output, not a new model call or proof of browser-authenticated playback. The pitch predates the latest live judge-access improvements.
 
 Source, tests, exact deployment qualifications and sanitized provider receipts are linked in the repository.
 
 ## Judge access and honest limits
 
-**Platform:** desktop web browser. **Core test route:** the public source and English local setup instructions provide repeatable synthetic analysis, evidence, replay, personalization and recaps without a Tactiq account, paid subscription or provider key.
+**Platform:** desktop web browser.
 
-The Azure endpoint is a supplemental budget-limited pilot. It has cold starts, up to fifteen-minute initial dispatch and one new native analysis per UTC day globally. It is not unrestricted hosted testing. Live Azure generation requires configured services and available shared budget; the local route uses deterministic explanations instead.
+**Immediate hosted exploration:** use the [public interactive example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example). It requires no account or provider key and consumes no new paid AI generation. Its output is prepared, not live inference.
+
+**Reproducible local testing:** the [English testing guide](demo-guide.md#free-local-judge-testing) supports repeatable synthetic analysis, evidence, replay, personalization and recaps without a Tactiq account, paid subscription or provider key. This route uses deterministic explanations rather than live Azure generation.
+
+**New cloud analysis:** the [private workspace](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/workspace) remains budget-limited, with up to fifteen-minute initial dispatch, one new native analysis per UTC day globally, workspace ownership and guest expiry. Live Azure generation requires configured services and available shared budget. Neither prepared exploration nor local deterministic testing should be confused with unlimited live Azure AI access.
 
 The entrant must maintain the offered testing route through the judging period and confirm any additional organizer-required access to paid AI. Production football-video accuracy, completed interactive Microsoft sign-in, sustained load, HA and enterprise readiness are not claimed as verified.
 
@@ -143,3 +163,5 @@ Tactiq turns synthetic football events into something people can inspect, unders
 **Every compelling explanation should have evidence behind it.**
 
 ### See the play. Understand the game.
+
+[Explore the interactive example](https://ca-tactiq-web-3e4d.salmongrass-337969b4.westus3.azurecontainerapps.io/example) · [Watch the 1:55 pitch](https://youtu.be/ktO6Mbmkhy4) · [Explore the public code](https://github.com/wenakanew/tactiq)
