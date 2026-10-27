@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import hashlib
 from importlib.metadata import version
 import json
+import logging
 import os
 from typing import Any, Callable
 from uuid import uuid4
@@ -27,6 +28,7 @@ from tactiq.domain.models import Insight
 
 SDK_VERSION = "1.23.0"
 OPENAI_SDK_VERSION = "1.17.0"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -64,12 +66,26 @@ class MomentEvidence:
             ) if key in context
         }
         # Never copy arbitrary event qualifiers, frame data, URLs or media paths.
-        safe_context["phase_events"] = [
-            {key: item[key] for key in ("type", "player_id", "event_id") if key in item}
-            for item in context.get("phase_events", [])[-8:]
-            if insight.window_start_ms <= item.get("match_clock_ms", insight.window_start_ms)
-            <= insight.window_end_ms
-        ]
+        phase_events = context.get("phase_events", [])
+        if not isinstance(phase_events, list):
+            raise ValueError("Commentary phase_events must be a list")
+        valid_events = []
+        malformed = 0
+        for item in phase_events:
+            if not isinstance(item, dict) or type(item.get("match_clock_ms")) is not int:
+                malformed += 1
+                continue
+            timestamp = item["match_clock_ms"]
+            if timestamp < 0 or not isinstance(item.get("type"), str):
+                malformed += 1
+                continue
+            if insight.window_start_ms <= timestamp <= insight.window_end_ms:
+                valid_events.append({
+                    key: item[key] for key in ("type", "player_id", "event_id", "match_clock_ms") if key in item
+                })
+        if malformed:
+            logger.warning("Omitted %d malformed commentary phase event(s); no temporal default applied", malformed)
+        safe_context["phase_events"] = valid_events[-8:]
         safe_context["language"] = language
         scoped = insight.model_copy(update={"context": safe_context}, deep=True)
         if len(scoped.model_dump_json().encode()) > 64_000:

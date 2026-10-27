@@ -12,11 +12,32 @@ YouTube player metadata on 2026-10-26 reported `Tactiq Pitch`, 115 seconds, play
 
 | Route | Access and scope |
 | --- | --- |
+| **Prepared public example in this revision** | Frontend-only `/example`, no sign-in or backend. Real synthetic-engine replay, prepared deterministic explanations in seven locales, evidence, recap and matching offline English narration. Not yet deployed to the Azure pilot. |
 | **Free local synthetic test** | No Tactiq account, payment, provider key or cloud daily-admission cap. Demonstrates the analytical pipeline, replay, evidence, personalization and deterministic recap. Requires installing the open-source development prerequisites. |
 | **Public Azure pilot** | Guest access has cold starts, up to fifteen-minute initial dispatch, one new native analysis per UTC day globally, workspace ownership and guest expiry. Paid generation also has a fixed shared budget. Do not describe this route as unrestricted judge access. |
 | **Verified Azure AI/media receipts** | Published Foundry/Framework/Speech and private-storage evidence proves those particular checks. It is not a substitute for live interactive access or a promise of unlimited paid generation. |
 
 Rule 4.8 requires free testing availability through November 10, 2026 at 11:59 pm Pacific. The entrant must verify the offered local test route and maintain its availability, and resolve any need for unrestricted live paid-provider testing before asserting complete access compliance. No cloud controls were disabled to create these instructions.
+
+## Immediate prepared example
+
+Run this revision's frontend with Node 22.13+; Python, Azure credentials, a database and FFmpeg are not needed to **browse the checked-in example**. From the repository root:
+
+```powershell
+Set-Location apps\web
+npm ci
+node node_modules\next\dist\bin\next dev --hostname 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000/example`, or choose **Explore an example match** from the landing page. **Start a new analysis** still opens the original pipeline and its controls.
+
+1. Select **Pressure Building**, play/pause the real replay, seek, or switch between 2D and the simulated 2.5D scene.
+2. Compare **Fan** with **Analyst**, then change the locale. The analyst explanation leads with supporting measurements.
+3. Expand **Explore the supporting evidence** and **How was this made?** to see the selected window, events, metrics, recipe, seed and output source.
+4. With **Pressure Building**, **English** and **Fan** selected, play the matching prepared offline narration. Other combinations disclose unavailable audio rather than substituting a mismatched recording.
+5. Read the recap and use its moment buttons. Separately, the labelled Azure exchange below is an existing provider recording about a different passage, with its own transcript and provenance.
+
+Replay playback and audio are independent; narration pauses replay, not synchronized word-by-word commentary. The example is illustrative synthetic football, not a real-match benchmark. It does not run Foundry or the lead/analyst workflow on opening. [Actual browser capture](../assets/examples/public-example.png) and [verification report](../development/judge-experience.md) show the tested revision. The Azure pilot was not redeployed for this change.
 
 ## Free local judge testing
 

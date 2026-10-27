@@ -23,7 +23,8 @@ export default function HomePage() {
           <h1>Watch the game.<br />Understand the <em>why.</em></h1>
           <p className="hero-description">The run that opens a defence. The pressure that changes a match. Find the moments that matter, and the evidence behind them.</p>
           <div className="hero-actions">
-            <Link href="/workspace?start=demo" prefetch={false} className="btn btn--primary">Explore a match <ArrowRight size={17} aria-hidden="true" /></Link>
+            <Link href="/example" prefetch={false} className="btn btn--primary">Explore an example match <ArrowRight size={17} aria-hidden="true" /></Link>
+            <Link href="/workspace?start=demo" prefetch={false} className="btn btn--outline">Start a new analysis</Link>
             <Link href="/workspace?start=video" prefetch={false} className="btn btn--outline">Analyze your video</Link>
           </div>
           <div className="hero-footnote"><span className="fine-rule" /><span>Football intelligence.<br /><strong>More perspective. Less guesswork.</strong></span></div>

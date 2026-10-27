@@ -9,6 +9,7 @@ node_modules/
 apps/web/.next/
 *.log
 *.wav
+!/apps/web/public/examples/pressure-en.wav
 *.egg-info/
 *.tsbuildinfo
 services/.tactiq_media/

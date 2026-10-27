@@ -4,15 +4,17 @@ import { clockLabel, readableLabel, type Insight } from "../../lib/workspace-typ
 import InsightEvidence from "./InsightEvidence";
 import EvidenceClip from "./EvidenceClip";
 
-export default function SelectedMoment({ insight, narrative, title, meta, narrativeInsightId, language, following, onListen, onExplore, overviewAvailable, busy }: {
+export default function SelectedMoment({ insight, narrative, title, meta, narrativeInsightId, language, following, onListen, onExplore, overviewAvailable, busy, listenLabel = "Listen" }: {
   insight: Insight | null; narrative: string; title: string; meta: string; narrativeInsightId?: string;
   language: string; following: boolean; onListen: () => void; onExplore: () => void;
   overviewAvailable?: boolean;
   busy?: boolean;
+  listenLabel?: string;
 }) {
   const reducedMotion = useReducedMotion();
   const explained = insight && narrativeInsightId === insight.insight_id && Boolean(narrative);
-  const source = meta.includes("provider=guardrail-") ? "Evidence guardrail · explanation limited"
+  const source = meta.includes("prepared public synthetic example") ? "Prepared deterministic explanation · no model call"
+    : meta.includes("provider=guardrail-") ? "Evidence guardrail · explanation limited"
     : meta.includes("fallback=true") ? "Fallback explanation · no live model response"
       : meta.includes("provider=foundry") ? "Model explanation · supporting evidence checked"
         : meta && !meta.includes("provider=") ? `Explanation unavailable: ${meta}` : "";
@@ -28,7 +30,7 @@ export default function SelectedMoment({ insight, narrative, title, meta, narrat
           {explained && narrative.includes("\n\n") ? <details className="full-explanation"><summary>Read the full breakdown</summary>
             {narrative.split("\n\n").slice(1).map((paragraph, index) => <p key={index} lang={language} dir="auto">{paragraph}</p>)}</details> : null}
           <div className="confidence-row"><span className="confidence-track"><span className="confidence-fill" style={{ width: `${Math.round(insight.confidence * 100)}%` }} /></span><span className="confidence-label">{Math.round(insight.confidence * 100)}% signal confidence</span></div>
-          <div className="insight-actions"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={onListen}><Volume2 size={14} aria-hidden="true" />Listen</button>
+          <div className="insight-actions"><button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={onListen}><Volume2 size={14} aria-hidden="true" />{listenLabel}</button>
             <button type="button" className="btn btn--outline btn--sm" onClick={onExplore}>Explore moments<ArrowRight size={14} aria-hidden="true" /></button></div>
           {source ? <p className="explanation-source">{source}</p> : null}
           {meta ? <details className="source-details"><summary>Explanation source details</summary><p className="status-line">{meta}</p></details> : null}

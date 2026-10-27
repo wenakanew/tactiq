@@ -9,7 +9,7 @@ import hashlib
 from typing import Any, Protocol
 
 from tactiq.domain.models import Insight
-from tactiq.agents.grounding import Claim, GeneratedLine, GeneratedNarrative, validate_text
+from tactiq.agents.grounding import Claim, GeneratedLine, GeneratedNarrative, UnverifiedLocaleError, validate_text
 from tactiq.agents.localization import language_copy, localized_insight
 from tactiq.agents.usage import record_model_usage
 from tactiq.agents.commentary import CommentaryTurn, GeneratedDialogue, GeneratedRole, deep_supported, deterministic_turns
@@ -189,6 +189,8 @@ class FoundryNarrativeGenerator:
             "invalid_output" if isinstance(exc, ValueError) else "service_error")
         failure = {"reason": reason, "status_code": status if isinstance(status, int) else None,
                    "exception_type": type(exc).__name__}
+        if isinstance(exc, UnverifiedLocaleError):
+            failure["validation_boundary"] = "unverified-localized-prose"
         self._last_failure = failure
         if status in {401, 403, 404, 429} or authentication_error:
             self._unavailable_until = time.monotonic() + 300

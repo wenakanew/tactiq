@@ -976,7 +976,8 @@ class MatchService:
             "team_display_names": self.matches[match_id].team_display_names,
             "known_player_ids": sorted(players),
             "event_types": sorted(event_types),
-            "phase_events": [{"type": event.type, "player_id": event.player_id, "event_id": event.event_id}
+            "phase_events": [{"type": event.type, "player_id": event.player_id, "event_id": event.event_id,
+                              "match_clock_ms": event.match_clock_ms}
                              for event in own[-6:]],
             "has_pitch_geometry": any(event.type == "tracking_frame" and event.match_clock_ms <= insight.window_end_ms
                                       and event.match_clock_ms >= insight.window_start_ms
