@@ -8,7 +8,7 @@ Match footage shows the action, but understanding pressure, movement and turning
 
 **The pitch:** watch the moment, inspect the evidence, understand the game.
 
-[Explore the product](docs/product/user-guide.md) · [Watch the 1:55 pitch](https://youtu.be/ktO6Mbmkhy4) · [Judging and rules map](docs/submission/judging-guide.md) · [Documentation](docs/README.md)
+[Explore the product](docs/product/user-guide.md) · [Watch the youtube pitch](https://youtu.be/ktO6Mbmkhy4) · [Judging and rules map](docs/submission/judging-guide.md) · [Documentation](docs/README.md)
 
 ## What it does
 
